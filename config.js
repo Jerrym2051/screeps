@@ -178,6 +178,8 @@ function getTargets(room) {
     targets.repairer = 0;
   }
   if (room.energyAvailable < 500) { targets.harvester += 2; }
+  // Cap upgraders at 3 — they don't scale with room size
+  targets.upgrader = Math.min(targets.upgrader || 0, 3);
   return targets;
 }
 
