@@ -83,7 +83,15 @@ function buildBody(role, budget) {
     if (budget >= 100) { b.push(TOUGH, MOVE); budget -= 100; }
     return b;
   }
-  const isWork = ['harvester','upgrader','builder','miner'].includes(role);
+  // upgrader: big CARRY to maximize energy per trip, fewer trips back to spawn
+  if (role === 'upgrader') {
+    if (budget < 250) return [];
+    while (budget >= 250) { b.push(WORK, CARRY, CARRY, MOVE); budget -= 250; }
+    if (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget >= 100) { b.push(CARRY, MOVE); }
+    return b;
+  }
+  const isWork = ['harvester','builder','miner'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
     while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
