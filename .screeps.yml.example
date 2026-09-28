@@ -1,0 +1,8 @@
+# Copy this file to .screeps.yml and replace the token placeholder.
+# Get a token at https://screeps.com/a/#!/account/auth-tokens
+# Do NOT commit the real .screeps.yml file.
+servers:
+  main:
+    host: screeps.com
+    secure: true
+    token: REPLACE_WITH_YOUR_AUTH_TOKEN

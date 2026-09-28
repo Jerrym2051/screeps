@@ -1,0 +1,6 @@
+node_modules/
+logs/
+.screeps.yml
+*.log
+npm-debug.log*
+.env

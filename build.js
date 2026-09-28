@@ -32,6 +32,7 @@ function placeContainers(room) {
     if (nearContainers.length > 0) continue;
     for (const [dx, dy] of containerDirs) {
       const px = src.pos.x + dx, py = src.pos.y + dy;
+      if (px < 0 || px > 49 || py < 0 || py > 49) continue;
       const t = room.getTerrain().get(px, py);
       if (t === 'wall' || t === 'swamp') continue;
       const mid = room.getTerrain().get(src.pos.x + dx/2, src.pos.y + dy/2);
@@ -121,7 +122,9 @@ function placeRamparts(room) {
   for (const pos of targets) {
     if (pos.x == null || pos.y == null) continue;
     for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
-      const rp = new RoomPosition(pos.x + dx, pos.y + dy, room.name);
+      const px = pos.x + dx, py = pos.y + dy;
+      if (px < 0 || px > 49 || py < 0 || py > 49) continue;
+      const rp = new RoomPosition(px, py, room.name);
       if (room.getTerrain().get(rp.x, rp.y) !== 'wall') {
         makeSite(rp, STRUCTURE_RAMPART, room);
       }
