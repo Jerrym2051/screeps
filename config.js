@@ -104,20 +104,17 @@ function buildBody(role, budget) {
     if (budget >= 100) { b.push(CARRY, MOVE); }
     return b;
   }
-  // harvester: cheaper base body so they can spawn even when energy is low
+  // harvester: WORK-priority. A single 1-WORK/1-CARRY body only nets ~1.25/tick
+  // after travel — barely enough for one upgrader, so a builder (or any creep
+  // death) tips the room into an energy crash + slim-down thrash. 2 WORK harvests
+  // ~4/tick; with CARRY for a delivery buffer ONE harvester sustains upgrader +
+  // builder. Keep the 1-WORK/1-CARRY body only as the low-energy emergency floor.
   if (role === 'harvester') {
     if (budget < 200) return [];
-    while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
-    if (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }
-    if (budget >= 100) { b.push(WORK, MOVE); budget -= 100; }
-    return b;
-  }
-  // upgrader: big CARRY to maximize energy per trip, cheaper base body
-  if (role === 'upgrader') {
-    if (budget < 200) return [];
-    while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
-    if (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }
-    if (budget >= 100) { b.push(CARRY, MOVE); }
+    if (budget >= 350) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C ~2.5/tick
+    else if (budget >= 300) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C ~1.8/tick
+    else { b.push(WORK, CARRY, MOVE); budget -= 200; }                            // 1W1C emergency floor
+    while (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
     return b;
   }
   const isWork = ['builder','miner','hauler'].includes(role);
@@ -366,7 +363,11 @@ function manageSpawns(room) {
       // Near-death only & too broke to replace yet: let the living FUNCTIONAL
       // harvester keep collecting so a replacement can be afforded next tick.
     } else {
-      const body = prodBody;
+      // Scale the replacement with current energy: banked energy -> a 2-WORK
+      // harvester (~2.5/tick) that sustains upgrader + builder; tight energy ->
+      // the [W,C,M] floor (prodBody stays the crisis minimum).
+      let body = buildBody('harvester', room.energyAvailable);
+      if (!body.length) body = prodBody;
       const memory = { role: 'harvester' };
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;
