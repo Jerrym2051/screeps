@@ -271,14 +271,16 @@ function manageSpawns(room) {
   // on servers with non-standard body part prices.
   const HARVEST_REPLACE_TTL = 100;
   const prodBody = [WORK, CARRY, MOVE];
-  const minBody = [WORK, MOVE];
   const bodyCost = b => b.reduce((n, p) => n + (BODYPART_COST[p] || 0), 0);
   const prodCost = bodyCost(prodBody);
-  const minCost = bodyCost(minBody);
+  const hasCarry = c => Array.isArray(c.body) && c.body.some(p => p.type === CARRY);
   const roomHarvesters = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
   const liveHarvesterCount = roomHarvesters.length;
+  const functionalHarvesterCount = roomHarvesters.filter(hasCarry).length;
+  const nonFunctionalHarvester = liveHarvesterCount > 0 && functionalHarvesterCount === 0
+    ? roomHarvesters.find(c => !hasCarry(c)) : null;
   const nearDeath = roomHarvesters.some(c => typeof c.ticksToLive === 'number' && c.ticksToLive < HARVEST_REPLACE_TTL);
-  if (liveHarvesterCount > 0) Memory._crisisHarvester = false;
+  if (functionalHarvesterCount > 0) Memory._crisisHarvester = false;
 
   const targets = getTargets(room);
   const controller = room.controller;
@@ -287,40 +289,39 @@ function manageSpawns(room) {
   for (const name in Game.creeps) { const r = Game.creeps[name].memory.role; counts[r] = (counts[r] || 0) + 1; }
 
    // Harvester crisis recovery (prevents the energy-death deadlock):
-  //  - Proactive: a living harvester nearing end-of-life -> spawn its
-  //    replacement BEFORE it dies, using the productive body when affordable
-  //    and the minimal [WORK,MOVE] body otherwise (the normal path needs
-  //    prodCost and would otherwise leave a collection gap).
-  //  - Reactive: zero harvesters -> if energy can't yet afford even the
-  //    minimal body, recycle a non-harvester (>=2 parts) to raise it, then
-  //    spawn; if nothing can be recycled, emit a CRISIS log (unrecoverable
-  //    without player aid, e.g. spawn rebuilt).
-  const needRescue = liveHarvesterCount === 0 ||
-    (nearDeath && liveHarvesterCount <= (targets.harvester || 0));
+  //  - Proactive: a FUNCTIONAL harvester nearing end-of-life -> spawn its
+  //    replacement BEFORE it dies (prodBody=[W,C,M]); never use a [WORK,MOVE]
+  //    body (no CARRY -> never harvests).
+  //  - Reactive: zero FUNCTIONAL harvesters (incl. a stuck non-functional one)
+  //    -> if energy can't yet afford prodCost, recycle a victim (a non-harvester
+  //    >=2 parts, OR the non-functional harvester itself) to raise it, then
+  //    spawn; else emit a CRISIS log (unrecoverable w/o player aid).
+  const needRescue = functionalHarvesterCount === 0
+    || (nearDeath && liveHarvesterCount <= (targets.harvester || 0));
   if (needRescue && (targets.harvester || 0) > 0) {
-    if (room.energyAvailable < minCost) {
-      if (liveHarvesterCount === 0 && typeof s.recycleCreep === 'function') {
+    if (room.energyAvailable < prodCost) {
+      if (functionalHarvesterCount === 0 && typeof s.recycleCreep === 'function') {
         const victims = Object.values(Game.creeps)
-          .filter(c => c.memory.role !== 'harvester' && c.room.name === room.name && c.body.length >= 2);
+          .filter(c => c.room.name === room.name && c.body.length >= 2 &&
+            (c.memory.role !== 'harvester' || !hasCarry(c)));
         if (victims.length) {
           const victim = victims.reduce((a, b) => (a.body.length > b.body.length ? a : b));
           if (s.recycleCreep(victim) === OK) {
-            console.log('Recycled', victim.name, '(crisis) to fund harvester, energy', room.energyAvailable);
+            console.log('Recycled', victim.name, '(crisis)', hasCarry(victim) ? '' : 'non-functional harvester', 'to fund harvester, energy', room.energyAvailable);
             return;
           }
         }
         if (!Memory._crisisHarvester) {
           Memory._crisisHarvester = true;
-          console.log('CRISIS zero harvesters, energy', room.energyAvailable,
-            '< min', minCost, ', no creeps to recycle — room stalled');
+          console.log('CRISIS', nonFunctionalHarvester ? 'non-functional' : 'zero', 'harvesters, energy', room.energyAvailable,
+            '< prodCost', prodCost, ', no creeps to recycle — room stalled');
         }
         return;
       }
-      // Near-death only & too broke to replace yet: let the living harvester
-      // keep collecting so a replacement can be afforded next tick. Falls
-      // through to the candidate loop, which we guard below to conserve energy.
+      // Near-death only & too broke to replace yet: let the living FUNCTIONAL
+      // harvester keep collecting so a replacement can be afforded next tick.
     } else {
-      const body = room.energyAvailable >= prodCost ? prodBody : minBody;
+      const body = prodBody;
       const memory = { role: 'harvester' };
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;
@@ -336,11 +337,11 @@ function manageSpawns(room) {
     }
   }
 
-  // Conserve: when a harvester is imminently dying and energy can't yet
-  // afford even its minimal replacement body, hold ALL spawns so the room
-  // keeps enough energy to recover the harvester (otherwise it spends the
-  // last energy on a luxury creep and the source goes dark -> deadlock).
-  if (nearDeath && liveHarvesterCount <= (targets.harvester || 0) && room.energyAvailable < minCost) {
+  // Conserve: when a FUNCTIONAL harvester is imminently dying and energy can't
+  // yet afford its replacement (prodCost), hold ALL spawns so the living
+  // harvester keeps collecting and the room raises enough energy to respawn it
+  // (otherwise it spends the last energy on a luxury creep -> deadlock).
+  if (nearDeath && functionalHarvesterCount <= (targets.harvester || 0) && room.energyAvailable < prodCost) {
     return;
   }
 
