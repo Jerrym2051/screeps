@@ -184,7 +184,7 @@ function getTargets(room) {
     // source to a single weak harvester -> ~2/tick income -> the collapse cycle.
     const WORK_TO_SATURATE = 5;
     const workPerBody = Math.max(1, buildBody('harvester', budget).filter(p => p === WORK).length);
-    const harvestersPerSource = Math.max(3, Math.ceil(WORK_TO_SATURATE / workPerBody) + 2);
+    const harvestersPerSource = Math.min(7, Math.max(4, Math.ceil(WORK_TO_SATURATE / workPerBody) + 3));
     targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
