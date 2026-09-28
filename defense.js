@@ -24,7 +24,7 @@ function isThreatened(creep, hostiles, radius) {
 }
 
 function isCombat(role) {
-  return role === 'defender' || role === 'claimer';
+  return ['defender', 'attacker', 'claimer'].includes(role);
 }
 
 function flee(creep, hostiles) {
@@ -86,24 +86,29 @@ function isSourceDangerous(source, radius) {
     h.getActiveBodyparts(ATTACK) > 0 || h.getActiveBodyparts(RANGED_ATTACK) > 0);
 }
 
-// neighborRooms returns the 4 cardinal adjacent room names we can observe (Source Keepers live there).
+// neighborRooms returns all 8 adjacent room names we can observe.
 function neighborRooms(room) {
   const m = room.name.match(/^([WE])(\d+)([NS])(\d+)$/);
   if (!m) return [];
   const [, wS, wN, nS, nN] = m;
   const w = parseInt(wN), n = parseInt(nN);
   return [
-    wS + w + nS + (n + 1),  // north
-    wS + w + nS + (n - 1),  // south
-    wS + (w + 1) + nS + n,  // east
-    wS + (w - 1) + nS + n,  // west
-  ].filter(n => Game.rooms[n]);
+    wS + (w+0) + nS + (n+1),  // north
+    wS + (w+0) + nS + (n-1),  // south
+    wS + (w+1) + nS + (n+0),  // east
+    wS + (w-1) + nS + (n+0),  // west
+    wS + (w+1) + nS + (n+1),  // northeast
+    wS + (w+1) + nS + (n-1),  // southeast
+    wS + (w-1) + nS + (n+1),  // northwest
+    wS + (w-1) + nS + (n-1),  // southwest
+  ].filter(n => n);
 }
 
-// getHostilesNear scans the creep's room and adjacent rooms (Source Keepers live next door).
+// getHostilesNear scans the creep's room and ALL 8 adjacent rooms.
 function getHostilesNear(creep) {
   let hostiles = getHostiles(creep.room);
-  for (const name of neighborRooms(creep.room)) {
+  const neighbors = neighborRooms(creep.room);
+  for (const name of neighbors) {
     const room = Game.rooms[name];
     if (room) hostiles = hostiles.concat(getHostiles(room));
   }

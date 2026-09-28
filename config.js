@@ -1,5 +1,5 @@
 // config.js - body builder, population targets, spawn planner, multi-room manager
-const ROLES = ['harvester','upgrader','builder','hauler','claimer','looter','miner','defender','repairer'];
+const ROLES = ['harvester','upgrader','builder','hauler','claimer','looter','miner','defender','attacker','repairer'];
 const allies = [];
 
 function spawn(room) { return room.find(FIND_MY_SPAWNS)[0]; }
@@ -75,6 +75,14 @@ function buildBody(role, budget) {
     if (budget >= 100) { b.push(CARRY, MOVE); }
     return b;
   }
+  // attacker: ranged combat body - tough for survivability, ranged attack + heal
+  if (role === 'attacker') {
+    if (budget < 300) return [];
+    while (budget >= 300) { b.push(TOUGH, RANGED_ATTACK, MOVE, HEAL); budget -= 300; }
+    if (budget >= 150) { b.push(TOUGH, RANGED_ATTACK, MOVE); budget -= 150; }
+    if (budget >= 100) { b.push(TOUGH, MOVE); budget -= 100; }
+    return b;
+  }
   const isWork = ['harvester','upgrader','builder','miner'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
@@ -122,7 +130,8 @@ function getTargets(room) {
       const hasExt = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTRACTOR }).length > 0;
       if (hasExt) targets.miner = 1;
     }
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 4) : 1;
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 5) : 1;
+    targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 3) : 0;
     targets.repairer = hasFort ? 1 : 0;
   } else if (stage === 'outpost') {
     targets.harvester = sources.length * 2 + Math.max(0, containers.length - filled);
@@ -131,7 +140,8 @@ function getTargets(room) {
     targets.hauler = Math.max(2, sources.length);
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 2) : 1;
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 3) : 1;
+    targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 2) : 0;
     targets.miner = 0;
     targets.repairer = 0;
   } else if (stage === 'expansion') {
@@ -142,7 +152,8 @@ function getTargets(room) {
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
     targets.miner = 0;
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 3) : 1;
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 4) : 1;
+    targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 2) : 0;
     targets.repairer = hasFort ? 1 : 0;
   } else {
     targets.harvester = sources.length * 2;
@@ -153,6 +164,7 @@ function getTargets(room) {
     targets.looter = 0;
     targets.miner = 0;
     targets.defender = 1;
+    targets.attacker = 0;
     targets.repairer = 0;
   }
   if (room.energyAvailable < 500) { targets.harvester += 2; }
@@ -184,6 +196,7 @@ function manageSpawns(room) {
     else { sc += (role === 'harvester' ? 400 : 0); }
     sc += (role === 'claimer' ? 1000 : 0);
     sc += (role === 'defender' ? 500 : 0);
+    sc += (role === 'attacker' ? 600 : 0);
     sc += (role === 'upgrader' ? 30 + upgBoost : 0);
     sc += (role === 'builder' ? 40 : 0);
     sc += (role === 'hauler' ? 20 : 0);
@@ -194,13 +207,11 @@ function manageSpawns(room) {
     if (room.energyAvailable > 400 && role === 'harvester') { sc += 100; }
     if (sc > score) { score = sc; best = role; }
   }
-  if (!best) {
-    if (room.energyAvailable >= 200 && controller && controller.level < 8) best = 'upgrader';
-    if (!best) {
-      const hb = buildBody('harvester', room.energyAvailable);
-      if (hb.length > 0) best = 'harvester';
-      else return;
-    }
+  if (room.energyAvailable >= 200 && controller && controller.level < 8) best = 'upgrader';
+  if (room.energyAvailable >= 300 && best === 'upgrader') {
+    const hc = counts['attacker'] || 0;
+    const dc = counts['defender'] || 0;
+    if (hostilesCount > dc + hc) best = 'attacker';
   }
   const body = buildBody(best, room.energyAvailable);
   if (body.length === 0 && best !== 'harvester') {

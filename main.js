@@ -135,49 +135,36 @@ module.exports.loop = function () {
     defense.manageSafeMode(room);
   }
 
-  // 6. expansion logic: find and claim adjacent unclaimed rooms
+  // 6. expansion logic: find and claim ALL adjacent rooms in every direction
   const homeRoom = config.getHomeRoom();
   if (homeRoom && homeRoom.controller && homeRoom.controller.my && homeRoom.controller.level >= 2) {
     const m = homeRoom.name.match(/^([WE])(\d+)([NS])(\d+)$/);
     if (m) {
       const [, wS, wN, nS, nN] = m;
       const w = parseInt(wN), n = parseInt(nN);
-      const neighbors = [
-        wS + w + nS + (n + 1),
-        wS + w + nS + (n - 1),
-        wS + (w + 1) + nS + n,
-        wS + (w - 1) + nS + n,
+      // Scan all 8 compass directions with unlimited range
+      const directions = [
+        [0, 1], [0, -1], [1, 0], [-1, 0],  // cardinal
+        [1, 1], [1, -1], [-1, 1], [-1, -1],  // diagonal
       ];
-      for (const neighborName of neighbors) {
-        const nRoom = Game.rooms[neighborName];
-        if (nRoom && nRoom.controller && !nRoom.controller.my) {
-          // Mark as outpost for claiming
-          if (!Memory.rooms[neighborName]) {
-            Memory.rooms[neighborName] = { stage: 'outpost', priority: config.getRoomPriority(neighborName) };
-          } else if (Memory.rooms[neighborName].stage === 'outpost') {
-            // Keep as outpost until we have a spawn there
+      for (const [dx, dy] of directions) {
+        for (let dist = 1; dist <= 10; dist++) {
+          const rw = w + dx * dist;
+          const rn = n + dy * dist;
+          const neighborName = wS + rw + nS + rn;
+          const nRoom = Game.rooms[neighborName];
+          if (nRoom && nRoom.controller && !nRoom.controller.my) {
+            if (!Memory.rooms[neighborName]) {
+              Memory.rooms[neighborName] = { stage: 'outpost', priority: config.getRoomPriority(neighborName) };
+            } else if (Memory.rooms[neighborName].stage === 'expansion') {
+              Memory.rooms[neighborName].stage = 'outpost';
+            }
           }
-        }
-        // Also mark rooms 2 tiles away as expansion targets for 3-room goal
-        if (!nRoom || !nRoom.controller || !nRoom.controller.my) {
-          // Room not visible or not claimed - still plan for it
-          const m2 = neighborName.match(/^([WE])(\d+)([NS])(\d+)$/);
-          if (m2) {
-            const [, wS2, wN2, nS2, nN2] = m2;
-            const w2 = parseInt(wN2), n2 = parseInt(nN2);
-            const extendedNeighbors = [
-              wS2 + w2 + nS2 + (n2 + 1),
-              wS2 + w2 + nS2 + (n2 - 1),
-              wS2 + (w2 + 1) + nS2 + n2,
-              wS2 + (w2 - 1) + nS2 + n2,
-            ];
-            for (const extName of extendedNeighbors) {
-              if (!Memory.rooms[extName]) {
-                Memory.rooms[extName] = { stage: 'expansion', priority: config.getRoomPriority(extName) };
-              } else if (!Memory.rooms[extName].stage || Memory.rooms[extName].stage === 'outpost') {
-                // Prefer expansion over outpost for rooms we can't see yet
-                Memory.rooms[extName].stage = 'expansion';
-              }
+          if (!nRoom || !nRoom.controller || !nRoom.controller.my) {
+            if (!Memory.rooms[neighborName]) {
+              Memory.rooms[neighborName] = { stage: 'expansion', priority: config.getRoomPriority(neighborName) };
+            } else if (!Memory.rooms[neighborName].stage || Memory.rooms[neighborName].stage === 'outpost') {
+              Memory.rooms[neighborName].stage = 'expansion';
             }
           }
         }

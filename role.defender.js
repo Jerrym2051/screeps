@@ -20,24 +20,20 @@ module.exports = function (creep) {
   const ranged = creep.body.filter(p => p.type === RANGED_ATTACK && p.hits > 0).length;
   const heal = creep.body.filter(p => p.type === HEAL && p.hits > 0).length;
 
-  if (heal > 0 && creep.hits < creep.hitsMax * 0.4) { creep.heal(creep); return; }
+  if (heal > 0 && creep.hits < creep.hitsMax * 0.5) { creep.heal(creep); return; }
 
   if (!hostiles.length) {
     const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
-    if (spawn && creep.pos.getRangeTo(spawn) > 3) creep.moveTo(spawn, { reusePath: 5 });
+    if (spawn && creep.pos.getRangeTo(spawn) > 5) creep.moveTo(spawn, { reusePath: 5 });
     return;
   }
 
-  if (!weCanWin(creep, hostiles)) {
-    const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
-    if (spawn && creep.pos.getRangeTo(spawn) > 3) creep.moveTo(spawn, { reusePath: 5 });
-    return;
-  }
-
+  // Always engage — attacker and defender both fight when hostiles are present
   const target = defense.findTarget(creep, hostiles);
   if (!target) return;
   creep.moveTo(target, { reusePath: 3 });
   const range = creep.pos.getRangeTo(target);
   if (range <= 1 && melee > 0) creep.attack(target);
   else if (range <= 3 && ranged > 0) creep.rangedAttack(target);
+  if (creep.hits < creep.hitsMax * 0.8 && heal > 0) creep.heal(creep);
 };
