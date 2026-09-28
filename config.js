@@ -184,7 +184,7 @@ function getTargets(room) {
     // source to a single weak harvester -> ~2/tick income -> the collapse cycle.
     const WORK_TO_SATURATE = 5;
     const workPerBody = Math.max(1, buildBody('harvester', budget).filter(p => p === WORK).length);
-    const harvestersPerSource = Math.max(2, Math.ceil(WORK_TO_SATURATE / workPerBody) + 1);
+    const harvestersPerSource = Math.max(3, Math.ceil(WORK_TO_SATURATE / workPerBody) + 2);
     targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
@@ -241,13 +241,12 @@ function getTargets(room) {
     targets.attacker = 0;
     targets.repairer = 0;
   }
-  // At RCL<3 there are no source containers yet, so haulers would idle — hold them
-  // (they auto-enable once containers exist via the filled>0 rule above). Builders
-  // are now affordable: with the source saturated (see harvester target) income is
-  // ~8-10/tick vs ~3/tick drain (2 builders + 1 upgrader), so the surplus banks and
-  // gets spent on construction. Spawn priority (harvester=0) fills harvesters FIRST,
-  // so builders only appear once income is established — no collapse.
-  if (controller && controller.level < 3) { targets.hauler = 0; }
+  // Haulers only MOVE energy (never consume it), so enable them as soon as a source
+  // container is filled (the filled>0 rule above) — even at RCL<3. This is the
+  // efficient "store the harvest in a container, haul it to the spawn" path that
+  // delivers the source's full ~10/tick with far fewer carry-trips than harvesters
+  // alone (a lone harvester moves only ~1/tick once travel is counted). Builders stay
+  // affordable and spawn priority (harvester=0) still fills harvesters first — no collapse.
   // Cap upgraders at 3 — they don't scale with room size
   targets.upgrader = Math.min(targets.upgrader || 0, 3);
   return targets;
