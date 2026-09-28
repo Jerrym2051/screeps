@@ -375,42 +375,56 @@ function manageSpawns(room) {
     }
   }
 
-  // Conserve: when a FUNCTIONAL harvester is imminently dying and energy can't
-  // yet afford its replacement (prodCost), hold ALL spawns so the living
-  // harvester keeps collecting and the room raises enough energy to respawn it
-  // (otherwise it spends the last energy on a luxury creep -> deadlock).
-  if (nearDeath && functionalHarvesterCount <= (targets.harvester || 0) && room.energyAvailable < prodCost) {
-    return;
-  }
-
-  // Economy slim-down: when the spawn is critically starved (< prodCost), shed
-  // creeps that are NOT doing anything right now so the freed energy funds a
-  // harvester/upgrader (RCL growth). Only recycles genuinely idle units:
-  //   - a DEFENDER with no hostiles (pure drain right now), and
-  //   - a HARVESTER not in range of any source (excess on a source-limited
-  //     room), but never below 1 functional harvester actually at a source.
-  if (room.energyAvailable < prodCost && typeof s.recycleCreep === 'function') {
-    const sources = room.find(FIND_SOURCES);
+  // Economy slim-down: when critically starved (< prodCost), shed replaceable
+  // creeps so the spawn can bank energy for the next RCL gate (harvester or
+  // upgrader). NEVER touches harvesters — a worker's position is a noisy idle
+  // signal (a creep carrying a full load to the spawn, or walking empty to its
+  // source, is far from the source and would be mis-flagged), and killing one
+  // severs the energy supply = death spiral. Gated by a memory cooldown so at
+  // most one creep is shed per ~15 ticks (no workforce nuking).
+  if (room.energyAvailable < prodCost && typeof s.recycleCreep === 'function' && Game.time - (Memory._slimTick || 0) >= 15) {
+    Memory._slimTick = Game.time;
+    // (a) standing DEFENDER with no hostiles -> pure drain right now.
     const hostiles = room.find(FIND_HOSTILE_CREEPS);
     if (hostiles.length === 0) {
-      const idleDefenders = Object.values(Game.creeps)
+      const defs = Object.values(Game.creeps)
         .filter(c => c.memory.role === 'defender' && c.room.name === room.name && c.body.length >= 2);
-      if (idleDefenders.length) {
-        const victim = idleDefenders.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+      if (defs.length) {
+        const victim = defs.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
         if (s.recycleCreep(victim) === OK) {
           console.log('Recycled idle defender', victim.name, 'no hostiles, energy', room.energyAvailable);
           return;
         }
       }
     }
-    // NOTE: we deliberately do NOT recycle harvesters here. A harvester's
-    // position is a noisy "idle" signal — a worker carrying a full load back
-    // to the spawn, or walking empty back to its source, is >2 tiles from the
-    // source and would be misclassified as idle. Recycling it severs the energy
-    // supply (the exact deadlock we are trying to claw out of). Harvester
-    // over-staffing is prevented upstream (getTargets) and genuine
-    // zero-harvester crises are handled by the dedicated victim-recycle path
-    // above (which only touches non-harvesters / non-functional bodies).
+    // (b) surplus BUILDER while starving, no upgrader, RCL<3: recycle the
+    // newest (max refund) to bank for the RCL gate so RCL can grow and unlock
+    // extensions -> capacity. Builders are replaceable; construction sites are
+    // idempotent and will resume once energy flows.
+    if (controller && controller.level < 3 && (counts.upgrader || 0) === 0 && (counts.builder || 0) >= 1) {
+      const blds = Object.values(Game.creeps)
+        .filter(c => c.memory.role === 'builder' && c.room.name === room.name && c.body.length >= 2);
+      if (blds.length) {
+        const victim = blds.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+        if (s.recycleCreep(victim) === OK) {
+          console.log('Recycled builder', victim.name, 'starving, no upgrader (RCL' + (controller.level || 0) + ') to bank for RCL growth, energy', room.energyAvailable);
+          return;
+        }
+      }
+    }
+  }
+
+  // Conserve: hold ALL spawns while starving, to protect RCL growth:
+  //  - a functional harvester nearing death that can't yet be replaced, or
+  //  - no upgrader and RCL<3 (no extensions -> tiny capacity -> stall): hold
+  //    until we can afford an upgrader body (250 -> need ~260 available), so
+  //    the banked energy isn't spent on a replaceable builder first.
+  const UPGRADER_BODY_COST = 250;
+  if (
+    (nearDeath && functionalHarvesterCount <= (targets.harvester || 0) && room.energyAvailable < prodCost) ||
+    ((counts.upgrader || 0) === 0 && controller && controller.level < 3 && room.energyAvailable < UPGRADER_BODY_COST + 10)
+  ) {
+    return;
   }
 
   // Build a list of roles that still need more creeps, with their priority
