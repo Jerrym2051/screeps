@@ -211,7 +211,7 @@ function buildPlan(room) {
     if (!Memory.rooms) Memory.rooms = {};
     if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
     if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
-    console.log('buildPlan for', room.name, 'sources:', room.find(FIND_SOURCES).length, 'sites:', room.find(FIND_CONSTRUCTION_SITES).length, 'memory sources:', Object.keys(Memory.rooms[room.name].sources).length);
+    if (Game.time % 50 === 0) console.log('buildPlan for', room.name, 'sources:', room.find(FIND_SOURCES).length, 'sites:', room.find(FIND_CONSTRUCTION_SITES).length, 'memory sources:', Object.keys(Memory.rooms[room.name].sources).length);
     placeExtensions(room);
     placeContainers(room);
     placeRamparts(room);

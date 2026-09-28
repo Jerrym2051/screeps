@@ -128,7 +128,7 @@ module.exports.loop = function () {
     }
 
     // 4. idempotent construction plan
-    console.log('buildPlan called for', room.name, 'build type:', typeof build, 'buildPlan type:', build && typeof build.buildPlan);
+    if (Game.time % 50 === 0) console.log('buildPlan called for', room.name, 'build type:', typeof build, 'buildPlan type:', build && typeof build.buildPlan);
     if (build && build.buildPlan) build.buildPlan(room);
 
     // 5. tower active defense + safe mode

@@ -256,14 +256,48 @@ function getTargets(room) {
   return targets;
 }
 
+function reportStatus(room) {
+  // Throttled to once per 50 ticks: surfaces the main bottlenecks so the log
+  // stream shows exactly what the room is starved on (energy, role deficits,
+  // dropped resources, construction backlog, CPU, spawn backlog).
+  if (Memory._statusTick && Game.time - Memory._statusTick < 50) return;
+  Memory._statusTick = Game.time;
+  const counts = {};
+  const roomCreeps = Object.values(Game.creeps).filter(c => c.room.name === room.name);
+  for (const c of roomCreeps) counts[c.memory.role] = (counts[c.memory.role] || 0) + 1;
+  const targets = getTargets(room);
+  const deficit = [];
+  for (const role of ROLES) {
+    const d = (targets[role] || 0) - (counts[role] || 0);
+    if (d > 0) deficit.push(role + '+' + d);
+  }
+  const dropped = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
+  const sites = room.find(FIND_CONSTRUCTION_SITES).length;
+  const sources = room.find(FIND_SOURCES);
+  const sp = room.find(FIND_MY_SPAWNS)[0];
+  const spawning = sp && sp.spawning ? ('busy:' + (sp.spawning.name || 'creep')) : 'idle';
+  const stage = getRoomStage(room);
+  console.log('[STATUS ' + room.name + ' t=' + Game.time + ' rcl' +
+    (room.controller ? room.controller.level : 0) + ' ' + stage + '] ' +
+    'energy ' + room.energyAvailable + '/' + room.energyCapacityAvailable +
+    ' creeps ' + roomCreeps.length +
+    ' deficit ' + (deficit.length ? deficit.join(',') : 'none') +
+    ' dropped ' + dropped +
+    ' sites ' + sites +
+    ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
+    ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
+    ' spawn ' + spawning);
+}
+
 function manageSpawns(room) {
   const s = spawn(room);
   if (!s) return;
+  reportStatus(room);
   if (s.spawning !== null && s.spawning !== undefined) {
     if (!Memory._spawnBusyTicks) Memory._spawnBusyTicks = 0;
     Memory._spawnBusyTicks++;
-    if (Memory._spawnBusyTicks > 50) console.log('spawn STUCK:', s.spawning, 'forcing idle');
-    if (!Memory._spawnWasBusy) { Memory._spawnWasBusy = true; console.log('spawn BUSY:', s.spawning, 'energy', room.energyAvailable); }
+    if (Memory._spawnBusyTicks > 50) console.log('spawn STUCK:', s.spawning && s.spawning.name, 'forcing idle');
+    if (!Memory._spawnWasBusy) { Memory._spawnWasBusy = true; console.log('spawn BUSY:', s.spawning && s.spawning.name, 'energy', room.energyAvailable); }
     return;
   } else { Memory._spawnWasBusy = false; Memory._spawnBusyTicks = 0; }
   // Harvester resilience state (recovery logic below consumes these).
