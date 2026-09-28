@@ -184,7 +184,8 @@ function placeExtractor(room) {
 function buildPlan(room) {
   placeContainers(room);
   placeExtensions(room);
-  placeRoads(room);
+  // Roads skipped — no energy budget; wall terrain is permanent and cannot be removed via code
+  // placeRoads(room);
   placeStorage(room);
   placeRamparts(room);
   placeTowers(room);
