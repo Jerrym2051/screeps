@@ -258,11 +258,7 @@ function manageSpawns(room) {
     score = 9999;
   }
   const body = buildBody(best, room.energyAvailable);
-  if (body.length === 0 && best !== 'harvester') {
-    const hb = buildBody('harvester', room.energyAvailable);
-    if (hb.length > 0) best = 'harvester';
-    else return;
-  }
+  if (body.length === 0) return;
   if (best === 'claimer' && room.energyAvailable < 350) return;
   const memory = { role: best };
   if (best === 'harvester') {

@@ -96,8 +96,11 @@ function placeRamparts(room) {
       }
     }
   }
-  room.find(FIND_EXIT).forEach(e => targets.push(e));
+  room.find(FIND_EXIT).forEach(e => {
+    if (e.x != null && e.y != null) targets.push(e);
+  });
   for (const pos of targets) {
+    if (pos.x == null || pos.y == null) continue;
     for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
       const rp = new RoomPosition(pos.x + dx, pos.y + dy, room.name);
       if (room.getTerrain().get(rp.x, rp.y) !== 'wall') {
