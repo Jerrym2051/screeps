@@ -118,6 +118,22 @@ function buildBody(role, budget) {
   return b;
 }
 
+function countRemoteSources(room) {
+  const m = room.name.match(/^([WE])(\d+)([NS])(\d+)$/);
+  if (!m) return 0;
+  const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+  let count = 0;
+  for (const [dx, dy] of dirs) {
+    const neighborName = m[1] + (parseInt(m[2]) + dx) + m[3] + (parseInt(m[4]) + dy);
+    const neighbor = Game.rooms[neighborName];
+    if (!neighbor || !neighbor.controller || !neighbor.controller.my) continue;
+    // Skip if neighbor has hostiles
+    if (defense.getHostiles(neighbor).length > 0) continue;
+    count += neighbor.find(FIND_SOURCES).length;
+  }
+  return count;
+}
+
 function getTargets(room) {
   const sources = room.find(FIND_SOURCES);
   const controller = room.controller;
@@ -159,10 +175,13 @@ function getTargets(room) {
     const WORK_PARTS_PER_BODY = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
     const harvestRate = WORK_PARTS_PER_BODY * 0.9;
     const maxAffordable = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
+    // Count remote sources from adjacent rooms for multi-room harvesting
+    const remoteSources = countRemoteSources(room);
+    const totalSources = sources.length + Math.min(remoteSources, 4);
     // Desired harvesters per source to saturate it (accounting for travel time)
     const harvestersPerSource = Math.max(1, Math.ceil(ENERGY_PER_TICK / harvestRate * TRAVEL_TIME_FACTOR));
     // Cap total by what we can afford, but let the queue build up over ticks
-    targets.harvester = Math.min(sources.length * harvestersPerSource, maxAffordable)
+    targets.harvester = Math.min(totalSources * harvestersPerSource, maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
     targets.builder = Math.max(2, Math.ceil(sites / 2) + (controller && controller.level < 3 ? 1 : 0));
