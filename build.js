@@ -182,6 +182,14 @@ function placeExtractor(room) {
 }
 
 function buildPlan(room) {
+  // One-time: destroy all leftover construction sites (per room)
+  if (!Memory.rooms?.[room.name]?._sitesCleared) {
+    const sites = room.find(FIND_CONSTRUCTION_SITES);
+    for (const s of sites) s.destroy();
+    if (!Memory.rooms) Memory.rooms = {};
+    if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
+    Memory.rooms[room.name]._sitesCleared = true;
+  }
   // All construction eliminated — no energy budget for buildings
   // placeContainers(room);
   // placeExtensions(room);
