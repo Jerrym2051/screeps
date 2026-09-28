@@ -383,6 +383,39 @@ function manageSpawns(room) {
     return;
   }
 
+  // Economy slim-down: when the spawn is critically starved (< prodCost), shed
+  // creeps that are NOT doing anything right now so the freed energy funds a
+  // harvester/upgrader (RCL growth). Only recycles genuinely idle units:
+  //   - a DEFENDER with no hostiles (pure drain right now), and
+  //   - a HARVESTER not in range of any source (excess on a source-limited
+  //     room), but never below 1 functional harvester actually at a source.
+  if (room.energyAvailable < prodCost && typeof s.recycleCreep === 'function') {
+    const sources = room.find(FIND_SOURCES);
+    const hostiles = room.find(FIND_HOSTILE_CREEPS);
+    if (hostiles.length === 0) {
+      const idleDefenders = Object.values(Game.creeps)
+        .filter(c => c.memory.role === 'defender' && c.room.name === room.name && c.body.length >= 2);
+      if (idleDefenders.length) {
+        const victim = idleDefenders.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+        if (s.recycleCreep(victim) === OK) {
+          console.log('Recycled idle defender', victim.name, 'no hostiles, energy', room.energyAvailable);
+          return;
+        }
+      }
+    }
+    if (functionalHarvesterCount > 0 && liveHarvesterCount > Math.max(targets.harvester || 0, sources.length)) {
+      const atSource = roomHarvesters.filter(hasCarry).filter(c => sources.some(src => src.pos.getRangeTo(c.pos) <= 2));
+      const idle = roomHarvesters.filter(hasCarry).filter(c => !sources.some(src => src.pos.getRangeTo(c.pos) <= 2));
+      if (idle.length && atSource.length >= 1) {
+        const victim = idle.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+        if (s.recycleCreep(victim) === OK) {
+          console.log('Recycled idle harvester', victim.name, '(' + idle.length + ' idle /', liveHarvesterCount, 'harvesters vs', sources.length, 'sources), energy', room.energyAvailable);
+          return;
+        }
+      }
+    }
+  }
+
   // Build a list of roles that still need more creeps, with their priority
   // If a role has reached its target (need <= 0), priority becomes 100 (lowest)
   const candidates = [];
