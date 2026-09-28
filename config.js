@@ -390,6 +390,25 @@ function manageSpawns(room) {
     }
   }
 
+  // Accelerate the income upgrade: if the room is near-banked (can afford a 2-WORK
+  // harvester) but ALL functional harvesters are weak 1-WORK emergency bodies,
+  // recycle one NOW so the next spawn is a 2-WORK harvester (~2.5/tick) that can
+  // sustain a builder — instead of waiting ~1500 ticks for the weak one to age out.
+  // Only fires when not near-death (the rescue path owns that case), with a cooldown.
+  if (controller && controller.level < 3 && !nearDeath && room.energyAvailable >= 320 &&
+      Game.time - (Memory._harvUpgTick || 0) >= 20) {
+    const weakHarvs = roomHarvesters.filter(c =>
+      Array.isArray(c.body) && c.body.filter(p => p.type === WORK).length < 2);
+    if (weakHarvs.length && weakHarvs.length === functionalHarvesterCount) {
+      const victim = weakHarvs[0];
+      if (typeof s.recycleCreep === 'function' && s.recycleCreep(victim) === OK) {
+        Memory._harvUpgTick = Game.time;
+        console.log('Recycled weak harvester', victim.name, '-> upgrade to 2-WORK, energy', room.energyAvailable);
+        return;
+      }
+    }
+  }
+
   // Economy slim-down: when critically starved (< prodCost), shed replaceable
   // creeps so the spawn can bank energy for the next RCL gate (harvester or
   // upgrader). NEVER touches harvesters — a worker's position is a noisy idle
