@@ -47,14 +47,6 @@ const RULES = [
     finding: () => ({ key: 'spawn_stuck', text: 'spawn has been busy >50 ticks (stuck)' }),
   },
   {
-    match: /spawn BUSY/i,
-    severity: 'info',
-    finding: (line) => {
-      const m = line.match(/energy (\d+)/);
-      return { key: 'spawn_busy', text: 'spawn busy with energy ' + (m ? m[1] : '?') };
-    },
-  },
-  {
     match: /CRISIS/i,
     severity: 'warn',
     finding: (line) => {
