@@ -184,7 +184,7 @@ function getTargets(room) {
     targets.harvester = Math.min(totalSources * harvestersPerSource, maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
-    targets.builder = Math.max(2, Math.ceil(sites / 2) + (controller && controller.level < 3 ? 1 : 0));
+    targets.builder = 1; // cap at 1 — no active building
     targets.hauler = Math.max(2, Math.ceil(filled / 2));
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
@@ -203,7 +203,7 @@ function getTargets(room) {
     targets.harvester = Math.min(sources.length * Math.ceil(ENERGY_PER_TICK / (1 * 0.9) * 2), maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 0;
-    targets.builder = Math.max(1, Math.ceil(sites / 2));
+    targets.builder = 0; // no building
     targets.hauler = Math.max(2, sources.length);
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
@@ -217,7 +217,7 @@ function getTargets(room) {
     targets.harvester = Math.min(sources.length * Math.ceil(ENERGY_PER_TICK / (1 * 0.9) * 2), maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1;
-    targets.builder = Math.max(2, Math.ceil(sites / 2) + 1);
+    targets.builder = 0; // no building
     targets.hauler = Math.max(2, sources.length);
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;

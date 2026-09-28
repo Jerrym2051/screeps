@@ -182,16 +182,15 @@ function placeExtractor(room) {
 }
 
 function buildPlan(room) {
-  placeContainers(room);
-  placeExtensions(room);
-  // Roads skipped — no energy budget; wall terrain is permanent and cannot be removed via code
-  // placeRoads(room);
-  placeStorage(room);
-  placeRamparts(room);
-  placeTowers(room);
-  placeObserver(room);
-  placeLinks(room);
-  placeExtractor(room);
+  // All construction eliminated — no energy budget for buildings
+  // placeContainers(room);
+  // placeExtensions(room);
+  // placeStorage(room);
+  // placeRamparts(room);
+  // placeTowers(room);
+  // placeObserver(room);
+  // placeLinks(room);
+  // placeExtractor(room);
 }
 
 module.exports = { buildPlan };
