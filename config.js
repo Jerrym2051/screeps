@@ -301,22 +301,27 @@ function manageSpawns(room) {
     best = 'harvester';
     score = 9999;
   }
-  const body = buildBody(best, room.energyAvailable);
-  if (body.length === 0) return;
-  if (best === 'claimer' && room.energyAvailable < 350) return;
-  const memory = { role: best };
-  if (best === 'harvester') {
-    const sources = room.find(FIND_SOURCES);
-    let bestSrc = null, min = Infinity;
-    for (const src of sources) {
-      const n = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.memory.sourceId === src.id).length;
-      if (n < min) { min = n; bestSrc = src; }
+  // Try to spawn the best role that can afford a body; fall back to lower-priority roles
+  const orderedRoles = [best, ...ROLES.filter(r => r !== best)];
+  for (const role of orderedRoles) {
+    const body = buildBody(role, room.energyAvailable);
+    if (body.length === 0) continue;
+    if (role === 'claimer' && room.energyAvailable < 350) continue;
+    const memory = { role };
+    if (role === 'harvester') {
+      const sources = room.find(FIND_SOURCES);
+      let bestSrc = null, min = Infinity;
+      for (const src of sources) {
+        const n = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.memory.sourceId === src.id).length;
+        if (n < min) { min = n; bestSrc = src; }
+      }
+      if (bestSrc) memory.sourceId = bestSrc.id;
     }
-    if (bestSrc) memory.sourceId = bestSrc.id;
+    const result = s.createCreep(body, role + Game.time, memory);
+    if (typeof result !== 'string') console.log('spawn failed:', result, 'for', role, 'energy', room.energyAvailable);
+    else console.log('spawned', result, 'role', role, 'energy', room.energyAvailable, 'spawning', s.spawning);
+    return;
   }
-  const result = s.createCreep(body, best + Game.time, memory);
-  if (typeof result !== 'string') console.log('spawn failed:', result, 'for', best, 'energy', room.energyAvailable);
-  else console.log('spawned', result, 'role', best, 'energy', room.energyAvailable, 'spawning', s.spawning);
 }
 
 module.exports = { buildBody, getTargets, manageSpawns, allies, getOwnedRooms, getHomeRoom, getRoomStage, getRoomPriority };
