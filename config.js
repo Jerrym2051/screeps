@@ -278,6 +278,7 @@ function manageSpawns(room) {
   const roomHarvesters = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
   const liveHarvesterCount = roomHarvesters.length;
   const nearDeath = roomHarvesters.some(c => typeof c.ticksToLive === 'number' && c.ticksToLive < HARVEST_REPLACE_TTL);
+  if (liveHarvesterCount > 0) Memory._crisisHarvester = false;
 
   const targets = getTargets(room);
   const controller = room.controller;
@@ -308,8 +309,11 @@ function manageSpawns(room) {
             return;
           }
         }
-        console.log('CRISIS zero harvesters, energy', room.energyAvailable,
-          '< min', minCost, ', no creeps to recycle — room stalled');
+        if (!Memory._crisisHarvester) {
+          Memory._crisisHarvester = true;
+          console.log('CRISIS zero harvesters, energy', room.energyAvailable,
+            '< min', minCost, ', no creeps to recycle — room stalled');
+        }
         return;
       }
       // Near-death only & too broke to replace yet: let the living harvester
