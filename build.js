@@ -22,14 +22,23 @@ function placeContainers(room) {
   if (!Memory.rooms) Memory.rooms = {};
   if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
   if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
+  const containerDirs = [[0,-2],[0,2],[-2,0],[2,0]];
   for (const src of sources) {
-    if (Memory.rooms[room.name].sources[src.id]) continue;
-    for (const [dx, dy] of DIRS) {
+    // Skip if a container already exists within 2 tiles of this source
+    const nearContainers = room.find(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER &&
+        Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
+    });
+    if (nearContainers.length > 0) continue;
+    for (const [dx, dy] of containerDirs) {
       const px = src.pos.x + dx, py = src.pos.y + dy;
       const t = room.getTerrain().get(px, py);
       if (t === 'wall' || t === 'swamp') continue;
+      const mid = room.getTerrain().get(src.pos.x + dx/2, src.pos.y + dy/2);
+      if (mid === 'wall' || mid === 'swamp') continue;
       const pos = new RoomPosition(px, py, room.name);
       const res = makeSite(pos, STRUCTURE_CONTAINER, room);
+      console.log('container attempt for source', src.id, 'at', px, py, 'res:', res);
       if (res === OK) {
         Memory.rooms[room.name].sources[src.id] = { containerPos: { x: px, y: py, roomName: room.name } };
         break;
@@ -182,8 +191,22 @@ function placeExtractor(room) {
 }
 
 function buildPlan(room) {
-  // Build 2 defensive towers (RCL 3+)
-  placeTowers(room);
+  try {
+    if (!Memory.rooms) Memory.rooms = {};
+    if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
+    if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
+    console.log('buildPlan for', room.name, 'sources:', room.find(FIND_SOURCES).length, 'sites:', room.find(FIND_CONSTRUCTION_SITES).length, 'memory sources:', Object.keys(Memory.rooms[room.name].sources).length);
+    placeExtensions(room);
+    placeContainers(room);
+    placeRamparts(room);
+    placeTowers(room);
+    placeStorage(room);
+    placeObserver(room);
+    placeLinks(room);
+    placeExtractor(room);
+  } catch (e) {
+    console.log('buildPlan error:', e.message, e.stack);
+  }
 }
 
 module.exports = { buildPlan };

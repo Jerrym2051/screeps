@@ -197,10 +197,10 @@ function getTargets(room) {
     targets.harvester = Math.min(totalSources * harvestersPerSource, maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
-    targets.builder = 1; // cap at 1 — no active building
+    targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
-    targets.looter = drops > 0 ? 1 : 0;
+    targets.looter = 0;
     const minerals = room.find(FIND_MINERALS);
     targets.miner = 0;
     if (minerals.length) {
@@ -216,10 +216,10 @@ function getTargets(room) {
     targets.harvester = Math.min(sources.length * Math.ceil(ENERGY_PER_TICK / (1 * 0.9) * 2), maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 0;
-    targets.builder = 0; // no building
+    targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
-    targets.looter = drops > 0 ? 1 : 0;
+    targets.looter = 0;
     targets.defender = hostilesCount ? Math.min(hostilesCount, 3) : 1;
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 2) : 0;
     targets.miner = 0;
@@ -230,10 +230,10 @@ function getTargets(room) {
     targets.harvester = Math.min(sources.length * Math.ceil(ENERGY_PER_TICK / (1 * 0.9) * 2), maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1;
-    targets.builder = 0; // no building
+    targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
-    targets.looter = drops > 0 ? 1 : 0;
+    targets.looter = 0;
     targets.miner = 0;
     targets.defender = hostilesCount ? Math.min(hostilesCount, 4) : 1;
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 2) : 0;
@@ -241,7 +241,7 @@ function getTargets(room) {
   } else {
     targets.harvester = sources.length * 2;
     targets.upgrader = 1;
-    targets.builder = 0;
+    targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = 0;
     targets.looter = 0;
