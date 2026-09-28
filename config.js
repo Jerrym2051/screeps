@@ -144,7 +144,19 @@ function getTargets(room) {
 
   const targets = {};
   if (stage === 'home') {
-    targets.harvester = sources.length * 3 + Math.max(0, containers.length - filled);
+    // Each source has 3000 energy, refills every 300 ticks = 10 energy/tick
+    // A WORK part harvests 0.9 energy/tick per source
+    // Need enough harvesters so total harvest rate >= 10 energy/tick per source
+    const ENERGY_PER_TICK = 3000 / 300; // 10 energy/tick per source
+    const budget = room.energyAvailable;
+    const HARVESTER_BODY_COST = 250; // [WORK, CARRY, CARRY, MOVE]
+    const WORK_PARTS_PER_BODY = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
+    const harvestRate = WORK_PARTS_PER_BODY * 0.9;
+    // Cap total harvesters by what we can afford to spawn
+    const maxAffordable = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
+    const harvestersPerSource = Math.max(1, Math.min(maxAffordable, Math.ceil(ENERGY_PER_TICK / harvestRate)));
+    targets.harvester = sources.length * Math.min(harvestersPerSource, 6)
+      + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
     targets.builder = Math.max(2, Math.ceil(sites / 2) + (controller && controller.level < 3 ? 1 : 0));
     targets.hauler = Math.max(2, Math.ceil(filled / 2));
