@@ -22,7 +22,6 @@ function placeContainers(room) {
   if (!Memory.rooms) Memory.rooms = {};
   if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
   if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
-  const containerDirs = [[0,-2],[0,2],[-2,0],[2,0]];
   for (const src of sources) {
     // Skip if a container already exists within 2 tiles of this source
     const nearContainers = room.find(FIND_STRUCTURES, {
@@ -30,19 +29,24 @@ function placeContainers(room) {
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
     if (nearContainers.length > 0) continue;
-    for (const [dx, dy] of containerDirs) {
-      const px = src.pos.x + dx, py = src.pos.y + dy;
-      if (px < 0 || px > 49 || py < 0 || py > 49) continue;
-      const t = room.getTerrain().get(px, py);
-      if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
-      const mid = room.getTerrain().get(src.pos.x + dx/2, src.pos.y + dy/2);
-      if (mid === TERRAIN_MASK_WALL || mid === TERRAIN_MASK_SWAMP) continue;
-      const pos = new RoomPosition(px, py, room.name);
-      const res = makeSite(pos, STRUCTURE_CONTAINER, room);
-      console.log('container attempt for source', src.id, 'at', px, py, 'res:', res);
-      if (res === OK) {
-        Memory.rooms[room.name].sources[src.id] = { containerPos: { x: px, y: py, roomName: room.name } };
-        break;
+
+    // Spiral outward from the source and place a container on the first
+    // valid plain tile: not wall/swamp, not on the room edge (construction
+    // sites require x/y in 1..48), not inside the spawn-clear radius, and
+    // not blocked by an existing structure/construction site.
+    let placed = false;
+    for (let r = 1; r <= 3 && !placed; r++) {
+      for (const pos of ring(src.pos, r)) {
+        if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
+        const t = room.getTerrain().get(pos.x, pos.y);
+        if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
+        const res = makeSite(pos, STRUCTURE_CONTAINER, room);
+        if (res === OK) {
+          Memory.rooms[room.name].sources[src.id] = { containerPos: { x: pos.x, y: pos.y, roomName: room.name } };
+          console.log('container placed for source', src.id, 'at', pos.x, pos.y);
+          placed = true;
+          break;
+        }
       }
     }
   }
@@ -52,7 +56,10 @@ function ring(center, r) {
   const out = [];
   for (let x = center.x - r; x <= center.x + r; x++)
     for (let y = center.y - r; y <= center.y + r; y++)
-      if ((Math.abs(x - center.x) === r || Math.abs(y - center.y) === r))
+      if (
+        (Math.abs(x - center.x) === r || Math.abs(y - center.y) === r) &&
+        x >= 0 && x <= 49 && y >= 0 && y <= 49
+      )
         out.push(new RoomPosition(x, y, center.roomName));
   return out;
 }
