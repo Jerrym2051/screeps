@@ -408,6 +408,23 @@ function manageSpawns(room) {
         }
       }
     }
+    // (c) Bootstrap income: break the income==drain equilibrium by shedding a
+    // surplus BUILDER (a drain role) to bank for the next harvester (the income
+    // role) while a harvester deficit exists. Keeps >=1 builder; once harvesters
+    // saturate the source the deficit closes and the spawn loop rebuilds builders.
+    // Without this the room sits at income==drain (~3/tick here) and never banks the
+    // ~300 needed to add a harvester -> the container/hauler unlock never arrives.
+    if (controller && controller.level < 3 && (targets.harvester || 0) > (counts.harvester || 0) && (counts.builder || 0) > 1) {
+      const blds = Object.values(Game.creeps)
+        .filter(c => c.memory.role === 'builder' && c.room.name === room.name && c.body.length >= 2);
+      if (blds.length > 1) {
+        const victim = blds.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+        if (s.recycleCreep(victim) === OK) {
+          console.log('Bootstrap: recycled builder', victim.name, 'to fund harvester (harv', (counts.harvester || 0) + '/' + targets.harvester + ') energy', room.energyAvailable);
+          return;
+        }
+      }
+    }
   }
 
   // Conserve: hold ALL spawns while starving, to protect RCL growth:
