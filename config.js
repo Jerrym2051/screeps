@@ -107,7 +107,7 @@ function buildBody(role, budget) {
     if (budget >= 100) { b.push(CARRY, MOVE); }
     return b;
   }
-  const isWork = ['builder','miner'].includes(role);
+  const isWork = ['builder','miner','hauler'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
     while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
@@ -185,7 +185,7 @@ function getTargets(room) {
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
     targets.builder = 1; // cap at 1 — no active building
-    targets.hauler = containers.length > 0 ? Math.max(0, Math.ceil(filled / 2)) : 0;
+    targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
     const minerals = room.find(FIND_MINERALS);
@@ -204,7 +204,7 @@ function getTargets(room) {
       + Math.max(0, containers.length - filled);
     targets.upgrader = 0;
     targets.builder = 0; // no building
-    targets.hauler = containers.length > 0 ? Math.max(0, Math.ceil(filled / 2)) : 0;
+    targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
     targets.defender = hostilesCount ? Math.min(hostilesCount, 3) : 1;
@@ -218,7 +218,7 @@ function getTargets(room) {
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1;
     targets.builder = 0; // no building
-    targets.hauler = containers.length > 0 ? Math.max(0, Math.ceil(filled / 2)) : 0;
+    targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = drops > 0 ? 1 : 0;
     targets.miner = 0;
@@ -229,7 +229,7 @@ function getTargets(room) {
     targets.harvester = sources.length * 2;
     targets.upgrader = 1;
     targets.builder = 0;
-    targets.hauler = containers.length > 0 ? Math.max(0, Math.ceil(filled / 2)) : 0;
+    targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = 0;
     targets.looter = 0;
     targets.miner = 0;
