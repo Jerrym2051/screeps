@@ -143,19 +143,26 @@ function getTargets(room) {
   const hasFort = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_RAMPART }).length > 0;
 
   const targets = {};
+  // Each source has 3000 energy, refills every 300 ticks = 10 energy/tick
+  const ENERGY_PER_TICK = 3000 / 300; // 10 energy/tick per source
   if (stage === 'home') {
-    // Each source has 3000 energy, refills every 300 ticks = 10 energy/tick
-    // A WORK part harvests 0.9 energy/tick per source
-    // Need enough harvesters so total harvest rate >= 10 energy/tick per source
-    const ENERGY_PER_TICK = 3000 / 300; // 10 energy/tick per source
-    const budget = room.energyAvailable;
+    // Use energyCapacityAvailable (grows with extensions) not energyAvailable (current stock)
+    const budget = Math.max(room.energyAvailable, room.energyCapacityAvailable);
     const HARVESTER_BODY_COST = 250; // [WORK, CARRY, CARRY, MOVE]
+    const ROUND_TRIP_TICKS = 30; // conservative estimate for room-scale walking
+    const CARRY_PER_HARVESTER = 100; // 2 CARRY per body
+    // Effective collection rate per harvester = CARRY / round-trip time
+    // [WORK, CARRY, CARRY, MOVE]: min(0.9, 100/30) = 0.9/tick (harvest-rate bottleneck)
+    // But travel overhead means effective rate ≈ 0.9 * (harvest_time / cycle) ≈ 0.7/tick
+    // Travel-time factor: multiply needed count to compensate
+    const TRAVEL_TIME_FACTOR = 3;
     const WORK_PARTS_PER_BODY = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
     const harvestRate = WORK_PARTS_PER_BODY * 0.9;
-    // Cap total harvesters by what we can afford to spawn
     const maxAffordable = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
-    const harvestersPerSource = Math.max(1, Math.min(maxAffordable, Math.ceil(ENERGY_PER_TICK / harvestRate)));
-    targets.harvester = sources.length * Math.min(harvestersPerSource, 6)
+    // Desired harvesters per source to saturate it (accounting for travel time)
+    const harvestersPerSource = Math.max(1, Math.ceil(ENERGY_PER_TICK / harvestRate * TRAVEL_TIME_FACTOR));
+    // Cap total by what we can afford, but let the queue build up over ticks
+    targets.harvester = Math.min(sources.length * harvestersPerSource, maxAffordable)
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
     targets.builder = Math.max(2, Math.ceil(sites / 2) + (controller && controller.level < 3 ? 1 : 0));
@@ -172,7 +179,10 @@ function getTargets(room) {
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 3) : 0;
     targets.repairer = hasFort ? 1 : 0;
   } else if (stage === 'outpost') {
-    targets.harvester = sources.length * 2 + Math.max(0, containers.length - filled);
+    const budget = Math.max(room.energyAvailable, room.energyCapacityAvailable);
+    const maxAffordable = Math.max(1, Math.floor(budget / 250));
+    targets.harvester = Math.min(sources.length * Math.ceil(ENERGY_PER_TICK / (1 * 0.9) * 2), maxAffordable)
+      + Math.max(0, containers.length - filled);
     targets.upgrader = 0;
     targets.builder = Math.max(1, Math.ceil(sites / 2));
     targets.hauler = Math.max(2, sources.length);
@@ -183,7 +193,10 @@ function getTargets(room) {
     targets.miner = 0;
     targets.repairer = 0;
   } else if (stage === 'expansion') {
-    targets.harvester = sources.length * 2 + Math.max(0, containers.length - filled);
+    const budget = Math.max(room.energyAvailable, room.energyCapacityAvailable);
+    const maxAffordable = Math.max(1, Math.floor(budget / 250));
+    targets.harvester = Math.min(sources.length * Math.ceil(ENERGY_PER_TICK / (1 * 0.9) * 2), maxAffordable)
+      + Math.max(0, containers.length - filled);
     targets.upgrader = 1;
     targets.builder = Math.max(2, Math.ceil(sites / 2) + 1);
     targets.hauler = Math.max(2, sources.length);
