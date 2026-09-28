@@ -255,6 +255,12 @@ function getTargets(room) {
   // a 1-source room just sit idle (wasting 200+ energy each and stalling spawns).
   // With several sources, more collectors genuinely raise the collection rate.
   if (room.energyAvailable < 500 && sources.length > 1) { targets.harvester += sources.length - 1; }
+  // Lean economy at RCL<3: with only the spawn's ~350 capacity and a single
+  // source (10 energy/tick), keeping builders/haulers splits the meager harvest
+  // across too many withdrawers and starves the spawner before RCL can grow.
+  // Hold them until RCL3 unlocks extensions + storage, then release them so the
+  // 29+ construction sites can finally be built without re-draining the pool.
+  if (controller && controller.level < 3) { targets.builder = 0; targets.hauler = 0; }
   // Cap upgraders at 3 — they don't scale with room size
   targets.upgrader = Math.min(targets.upgrader || 0, 3);
   return targets;
