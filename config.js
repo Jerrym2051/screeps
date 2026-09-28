@@ -108,7 +108,9 @@ function getTargets(room) {
   if (m) {
     const [, wS, wN, nS, nN] = m;
     const w = parseInt(wN), n = parseInt(nN);
-    for (const nm of [wS+w+nS+(n+1), wS+w+nS+(n-1), wS+(w+1)+nS+n, wS+(w-1)+nS+n]) {
+    const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (const [dx, dy] of dirs) {
+      const nm = wS+(w+dx)+nS+(n+dy);
       const r = Game.rooms[nm];
       if (r) hostiles = hostiles.concat(r.find(FIND_HOSTILE_CREEPS));
     }
