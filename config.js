@@ -395,7 +395,7 @@ function manageSpawns(room) {
   // recycle one NOW so the next spawn is a 2-WORK harvester (~2.5/tick) that can
   // sustain a builder — instead of waiting ~1500 ticks for the weak one to age out.
   // Only fires when not near-death (the rescue path owns that case), with a cooldown.
-  if (controller && controller.level < 3 && !nearDeath && room.energyAvailable >= 320 &&
+  if (controller && controller.level < 3 && !nearDeath && room.energyAvailable >= 300 &&
       Game.time - (Memory._harvUpgTick || 0) >= 20) {
     const weakHarvs = roomHarvesters.filter(c =>
       Array.isArray(c.body) && c.body.filter(p => p.type === WORK).length < 2);
