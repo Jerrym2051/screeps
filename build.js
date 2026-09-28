@@ -1,8 +1,18 @@
 // build.js - idempotent construction planner (containers, roads, extensions, storage, ramparts, towers, observer, links)
 const DIRS = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[-1,1],[1,-1],[1,1]];
+const SPAWN_CLEAR_RADIUS = 1; // leave the 8 tiles adjacent to the spawn empty for creep logistics
+
+function getSpawn(room) { return room.find(FIND_MY_SPAWNS)[0]; }
+
+function isSpawnClear(pos, room) {
+  const spawn = getSpawn(room);
+  if (!spawn) return true;
+  return Math.abs(pos.x - spawn.pos.x) > SPAWN_CLEAR_RADIUS || Math.abs(pos.y - spawn.pos.y) > SPAWN_CLEAR_RADIUS;
+}
 
 function makeSite(pos, type, room) {
   if (!pos) return ERR_INVALID_ARGS;
+  if (!isSpawnClear(pos, room)) return -4;
   if (pos.lookFor(LOOK_STRUCTURES).length || pos.lookFor(LOOK_CONSTRUCTION_SITES).length) return -4;
   return room.createConstructionSite(pos, type);
 }
