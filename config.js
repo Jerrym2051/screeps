@@ -301,6 +301,22 @@ function manageSpawns(room) {
     best = 'harvester';
     score = 9999;
   }
+  // Emergency: if zero harvesters exist, force-spawn a minimal one regardless of cost
+  if ((counts['harvester'] || 0) === 0 && targets.harvester > 0) {
+    const body = [WORK, MOVE]; // 150 energy minimum
+    const memory = { role: 'harvester' };
+    const sources = room.find(FIND_SOURCES);
+    let bestSrc = null, min = Infinity;
+    for (const src of sources) {
+      const n = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.memory.sourceId === src.id).length;
+      if (n < min) { min = n; bestSrc = src; }
+    }
+    if (bestSrc) memory.sourceId = bestSrc.id;
+    const result = s.createCreep(body, 'harvester' + Game.time, memory);
+    if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester', 'energy', room.energyAvailable);
+    else console.log('spawned', result, 'role harvester emergency', 'energy', room.energyAvailable);
+    return;
+  }
   // Try to spawn the best role that can afford a body; fall back to lower-priority roles
   const orderedRoles = [best, ...ROLES.filter(r => r !== best)];
   for (const role of orderedRoles) {
