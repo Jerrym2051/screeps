@@ -185,7 +185,7 @@ function manageSpawns(room) {
   } else { Memory._spawnWasBusy = false; Memory._spawnBusyTicks = 0; }
   // Emergency recycle: if zero harvesters remain, recycle a non-harvester creep to fund new ones
   const harvesterCreeps = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
-  if (harvesterCreeps.length === 0) {
+  if (harvesterCreeps.length === 0 && typeof s.recycleCreep === 'function') {
     const others = Object.values(Game.creeps).filter(c => c.memory.role !== 'harvester' && c.room.name === room.name);
     if (others.length > 0) {
       // Recycle the creep with the most body parts (most energy returned)
