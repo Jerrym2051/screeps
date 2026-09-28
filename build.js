@@ -34,9 +34,9 @@ function placeContainers(room) {
       const px = src.pos.x + dx, py = src.pos.y + dy;
       if (px < 0 || px > 49 || py < 0 || py > 49) continue;
       const t = room.getTerrain().get(px, py);
-      if (t === 'wall' || t === 'swamp') continue;
+      if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
       const mid = room.getTerrain().get(src.pos.x + dx/2, src.pos.y + dy/2);
-      if (mid === 'wall' || mid === 'swamp') continue;
+      if (mid === TERRAIN_MASK_WALL || mid === TERRAIN_MASK_SWAMP) continue;
       const pos = new RoomPosition(px, py, room.name);
       const res = makeSite(pos, STRUCTURE_CONTAINER, room);
       console.log('container attempt for source', src.id, 'at', px, py, 'res:', res);
@@ -69,7 +69,7 @@ function placeExtensions(room) {
     for (const pos of ring(spawn.pos, r)) {
       if (need <= 0) break;
       const t = room.getTerrain().get(pos.x, pos.y);
-      if (t === 'wall' || t === 'swamp') continue;
+      if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
       if (makeSite(pos, STRUCTURE_EXTENSION, room) === OK) need--;
     }
   }
@@ -83,7 +83,7 @@ function placeRoads(room) {
     const path = PathFinder.search(spawn.pos, t.pos, { swampCost: 1 }).path;
     for (const step of path) {
       const pos = new RoomPosition(step.x, step.y, room.name);
-      if (room.getTerrain().get(pos.x, pos.y) !== 'wall') {
+      if (room.getTerrain().get(pos.x, pos.y) !== TERRAIN_MASK_WALL) {
         makeSite(pos, STRUCTURE_ROAD, room);
       }
     }
@@ -125,7 +125,7 @@ function placeRamparts(room) {
       const px = pos.x + dx, py = pos.y + dy;
       if (px < 0 || px > 49 || py < 0 || py > 49) continue;
       const rp = new RoomPosition(px, py, room.name);
-      if (room.getTerrain().get(rp.x, rp.y) !== 'wall') {
+      if (room.getTerrain().get(rp.x, rp.y) === TERRAIN_MASK_WALL) {
         makeSite(rp, STRUCTURE_RAMPART, room);
       }
     }
