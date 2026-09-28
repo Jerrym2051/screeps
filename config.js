@@ -393,21 +393,13 @@ function manageSpawns(room) {
         }
       }
     }
-    // (b) surplus BUILDER while starving, no upgrader, RCL<3: recycle the
-    // newest (max refund) to bank for the RCL gate so RCL can grow and unlock
-    // extensions -> capacity. Builders are replaceable; construction sites are
-    // idempotent and will resume once energy flows.
-    if (controller && controller.level < 3 && (counts.upgrader || 0) === 0 && (counts.builder || 0) >= 1) {
-      const blds = Object.values(Game.creeps)
-        .filter(c => c.memory.role === 'builder' && c.room.name === room.name && c.body.length >= 2);
-      if (blds.length) {
-        const victim = blds.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
-        if (s.recycleCreep(victim) === OK) {
-          console.log('Recycled builder', victim.name, 'starving, no upgrader (RCL' + (controller.level || 0) + ') to bank for RCL growth, energy', room.energyAvailable);
-          return;
-        }
-      }
-    }
+    // (b) removed: previously recycled a builder whenever the upgrader was
+    // momentarily absent to "bank for RCL". In practice it thrashed builders on
+    // every upgrader TTL gap (spawn builder -> upgrader dies -> (b) kills the
+    // builder -> upgrader respawns -> ...), so the source container never
+    // finished and income stayed carry-limited (~5/tick). Redundant anyway:
+    // ROLE_PRIORITY already spawns the upgrader (5) before any builder (30),
+    // so harvester income funds the upgrader first without killing builders.
     // (c) Bootstrap income: break the income==drain equilibrium by shedding a
     // surplus BUILDER (a drain role) to bank for the next harvester (the income
     // role) while a harvester deficit exists. Keeps >=1 builder; once harvesters
