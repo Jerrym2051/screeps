@@ -18,12 +18,9 @@ module.exports = function (creep) {
       }
     }
     if (!found) {
-      const r = creep.withdraw(spawn, RESOURCE_ENERGY);
-      if (r === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
-      else if (r === ERR_NOT_ENOUGH_RESOURCES) {
-        const src = creep.pos.findClosestByPath(FIND_SOURCES);
-        if (creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
-      }
+      // No containers to haul — harvest from source instead of stealing from spawn
+      const src = creep.pos.findClosestByPath(FIND_SOURCES);
+      if (creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
     }
   } else {
     const r = creep.transfer(spawn, RESOURCE_ENERGY);
