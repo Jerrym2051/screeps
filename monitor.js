@@ -97,6 +97,15 @@ const RULES = [
       return amt > 200 ? { key: 'dropped_energy', text: 'dropped energy uncollected: ' + amt } : undefined;
     },
   },
+  {
+    match: /Recycled (idle )?(defender|builder|harvester)/i,
+    severity: 'info',
+    finding: (line) => {
+      const m = line.match(/Recycled(?: idle)? (\w+) (\S+)/);
+      return m ? { key: 'slimed_down:' + m[1], text: 'shed ' + m[1] + ' ' + m[2] + ' to bank energy for RCL growth' }
+        : { key: 'slimed_down', text: 'reclaimed a creep' };
+    },
+  },
 ];
 
 let state;
@@ -121,9 +130,13 @@ function readNew(name, file) {
   let stat;
   try { stat = fs.fstatSync(fd); } catch (e) { fs.closeSync(fd); return []; }
   const size = stat.size;
-  const last = state.offsets[name] || 0;
-  // If the file shrank (rotation/truncation), reset to start.
-  const start = size < last ? 0 : last;
+  const last = state.offsets[name];
+  // Cold start (no recorded offset): begin tailing at end-of-file so we only
+  // surface NEW issues rather than replaying the whole backlog.
+  if (!last) { state.offsets[name] = size; fs.closeSync(fd); return []; }
+  // If the file shrank (rotation/truncation), skip to the end of the new file
+  // rather than replaying the old (now-gone) content.
+  const start = size < last ? size : last;
   if (start >= size) { fs.closeSync(fd); return []; }
   const len = size - start;
   const buf = Buffer.alloc(len);
