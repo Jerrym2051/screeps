@@ -252,13 +252,20 @@ function getTargets(room) {
   // a 1-source room just sit idle (wasting 200+ energy each and stalling spawns).
   // With several sources, more collectors genuinely raise the collection rate.
   if (room.energyAvailable < 500 && sources.length > 1) { targets.harvester += sources.length - 1; }
-  // Lean economy at RCL<3: only the spawn's ~350 capacity + 1 source (10/tick).
-  // Allow exactly ONE builder: 1H (income 10) + 1U (1/tick) + 1B (2/tick) nets +7/tick,
-  // so energy still banks and the 29 sites finally get built (visible progress)
-  // while RCL still climbs. Haulers + surplus builders wait for RCL3's extensions.
-  // Safe vs stall: if a harvester nears death and energy drops, the rescue logic
-  // above recycles this builder (>=2 parts, non-harvester) to fund the replacement.
-  if (controller && controller.level < 3) { targets.builder = 1; targets.hauler = 0; }
+  // Lean economy at RCL<3: only the spawn's ~350 capacity + 1 source. A builder is
+  // affordable ONLY when a 2-WORK harvester (~2.5/tick) exists to cover its drain;
+  // with the weak 1-WORK emergency harvester (~1.25/tick) a builder makes income<drain,
+  // energy oscillates ~200 and never banks to the 300 needed to upgrade the harvester
+  // -> a permanent builder-thrash with no growth. So gate the builder on harvester
+  // strength: bank energy (builder=0) until a 2-WORK harvester is spawned, then release
+  // exactly one builder. Haulers wait for RCL3's extensions.
+  if (controller && controller.level < 3) {
+    targets.hauler = 0;
+    const strongHarv = Object.values(Game.creeps).some(c =>
+      c.memory.role === 'harvester' && c.room.name === room.name &&
+      Array.isArray(c.body) && c.body.filter(p => p.type === WORK).length >= 2);
+    targets.builder = strongHarv ? 1 : 0;
+  }
   // Cap upgraders at 3 — they don't scale with room size
   targets.upgrader = Math.min(targets.upgrader || 0, 3);
   return targets;
