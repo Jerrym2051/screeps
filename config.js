@@ -1,5 +1,18 @@
 // config.js - body builder, population targets, spawn planner, multi-room manager
-const ROLES = ['harvester','upgrader','builder','hauler','claimer','looter','miner','defender','attacker','repairer'];
+const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','builder','attacker','looter','miner'];
+// Threat-model priority: 0 = highest, 100 = lowest. Lower = spawn first.
+const ROLE_PRIORITY = {
+  harvester:  0,  // energy foundation — always first
+  upgrader:   5,  // permanent RCL/GCL climb
+  claimer:   10,  // claim new rooms
+  defender:  15,  // room defense
+  repairer:  20,  // ramparts/walls/roads
+  hauler:    25,  // logistics — only useful with containers
+  builder:   30,  // construction
+  attacker:  40,  // offense
+  looter:    50,  // pickup drops
+  miner:     60,  // RCL 6+ minerals
+};
 const allies = [];
 
 function spawn(room) { return room.find(FIND_MY_SPAWNS)[0]; }
@@ -275,34 +288,9 @@ function manageSpawns(room) {
   const stage = getRoomStage(room);
   const counts = {};
   for (const name in Game.creeps) { const r = Game.creeps[name].memory.role; counts[r] = (counts[r] || 0) + 1; }
-  let best = null, score = -Infinity;
-  for (const role of ROLES) {
-    const need = (targets[role] || 0) - (counts[role] || 0);
-    if (need <= 0) continue;
-    const upgBoost = (role === 'upgrader' && controller && controller.level < 2) ? 50 : 0;
-    let sc = need;
-    if (stage === 'home') { sc += (role === 'harvester' ? 500 : 0); }
-    else { sc += (role === 'harvester' ? 400 : 0); }
-    sc += (role === 'claimer' ? 1000 : 0);
-    sc += (role === 'defender' ? 500 : 0);
-    sc += (role === 'attacker' ? 600 : 0);
-    sc += (role === 'upgrader' ? 30 + upgBoost : 0);
-    sc += (role === 'builder' ? 40 : 0);
-    sc += (role === 'hauler' ? 20 : 0);
-    sc += (role === 'repairer' ? 25 : 0);
-    sc += (role === 'miner' ? 15 : 0);
-    sc += (role === 'looter' ? 5 : 0);
-    if (room.energyAvailable > 200 && role === 'harvester') { sc += 100; }
-    if (room.energyAvailable > 400 && role === 'harvester') { sc += 100; }
-    if (sc > score) { score = sc; best = role; }
-  }
-  // Harvesters are the foundation — always prioritize them if unmet
-  if (targets.harvester > (counts['harvester'] || 0)) {
-    best = 'harvester';
-    score = 9999;
-  }
-  // Emergency: if zero harvesters exist, force-spawn a minimal one regardless of cost
-  if ((counts['harvester'] || 0) === 0 && targets.harvester > 0) {
+
+   // Emergency: if zero harvesters exist, force-spawn a minimal one regardless of cost
+  if ((counts['harvester'] || 0) === 0 && (targets.harvester || 0) > 0) {
     const body = [WORK, MOVE]; // 150 energy minimum
     const memory = { role: 'harvester' };
     const sources = room.find(FIND_SOURCES);
@@ -317,12 +305,26 @@ function manageSpawns(room) {
     else console.log('spawned', result, 'role harvester emergency', 'energy', room.energyAvailable);
     return;
   }
-  // Try to spawn the best role that can afford a body; fall back to lower-priority roles
-  const orderedRoles = [best, ...ROLES.filter(r => r !== best)];
-  for (const role of orderedRoles) {
+
+  // Build a list of roles that still need more creeps, with their priority
+  // If a role has reached its target (need <= 0), priority becomes 100 (lowest)
+  const candidates = [];
+  for (const role of ROLES) {
+    const need = (targets[role] || 0) - (counts[role] || 0);
+    if (need <= 0) continue; // at target — effectively priority 100
+    // upgrader gets a boost when controller level is low
+    const upgBoost = (role === 'upgrader' && controller && controller.level < 2) ? 50 : 0;
+    candidates.push({ role, priority: ROLE_PRIORITY[role] + upgBoost, need });
+  }
+  // Sort by priority ascending (0 = highest), then by need descending for ties
+  candidates.sort((a, b) => a.priority - b.priority || b.need - a.need);
+
+  // Try to spawn the highest-priority role that can afford a body
+  for (const { role } of candidates) {
+    if (role === 'claimer' && room.energyAvailable < 350) continue;
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
-    if (role === 'claimer' && room.energyAvailable < 350) continue;
+    // Pick best source for harvesters
     const memory = { role };
     if (role === 'harvester') {
       const sources = room.find(FIND_SOURCES);
