@@ -207,7 +207,7 @@ function getTargets(room) {
       const hasExt = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTRACTOR }).length > 0;
       if (hasExt) targets.miner = 1;
     }
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 5) : 1;
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 5) : (room.controller && room.controller.level >= 4 ? 1 : 0);
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 3) : 0;
     targets.repairer = hasFort ? 1 : 0;
   } else if (stage === 'outpost') {
@@ -250,7 +250,11 @@ function getTargets(room) {
     targets.attacker = 0;
     targets.repairer = 0;
   }
-  if (room.energyAvailable < 500) { targets.harvester += 2; }
+  // Boost harvester targets only when there are MULTIPLE sources: one WORK harvester
+  // already saturates a single source's 10 energy/tick regen, so extra harvesters on
+  // a 1-source room just sit idle (wasting 200+ energy each and stalling spawns).
+  // With several sources, more collectors genuinely raise the collection rate.
+  if (room.energyAvailable < 500 && sources.length > 1) { targets.harvester += sources.length - 1; }
   // Cap upgraders at 3 — they don't scale with room size
   targets.upgrader = Math.min(targets.upgrader || 0, 3);
   return targets;
