@@ -289,9 +289,21 @@ function manageSpawns(room) {
   const counts = {};
   for (const name in Game.creeps) { const r = Game.creeps[name].memory.role; counts[r] = (counts[r] || 0) + 1; }
 
-   // Emergency: if zero harvesters exist, force-spawn a minimal one regardless of cost
-  if ((counts['harvester'] || 0) === 0 && (targets.harvester || 0) > 0) {
-    const body = [WORK, MOVE]; // 150 energy minimum
+   // Harvester resilience (prevents the energy-death deadlock):
+  //  - Emergency: zero harvesters -> force-spawn a minimal one now so the
+  //    room keeps collecting energy instead of stalling on empty reserves.
+  //  - Proactive: a harvester nearing end-of-life -> spawn its replacement
+  //    BEFORE it dies, so energy collection never gaps. The normal spawn
+  //    path needs >=210 energy for a [WORK,CARRY,MOVE] body, but the room
+  //    often sits between 150 and 209 during a dip; this uses a cheaper body
+  //    (and a productive one when 200+ is available) to close that gap.
+  const HARVEST_REPLACE_TTL = 100;
+  const roomHarvesters = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
+  const liveHarvesterCount = roomHarvesters.length;
+  const nearDeath = roomHarvesters.some(c => typeof c.ticksToLive === 'number' && c.ticksToLive < HARVEST_REPLACE_TTL);
+  const rescueNeeded = liveHarvesterCount === 0 || (nearDeath && liveHarvesterCount <= (targets.harvester || 0));
+  if (rescueNeeded && (targets.harvester || 0) > 0 && room.energyAvailable >= 150) {
+    const body = room.energyAvailable >= 200 ? [WORK, CARRY, MOVE] : [WORK, MOVE];
     const memory = { role: 'harvester' };
     const sources = room.find(FIND_SOURCES);
     let bestSrc = null, min = Infinity;
@@ -301,8 +313,8 @@ function manageSpawns(room) {
     }
     if (bestSrc) memory.sourceId = bestSrc.id;
     const result = s.createCreep(body, 'harvester' + Game.time, memory);
-    if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester', 'energy', room.energyAvailable);
-    else console.log('spawned', result, 'role harvester emergency', 'energy', room.energyAvailable);
+    if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
+    else console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
     return;
   }
 
