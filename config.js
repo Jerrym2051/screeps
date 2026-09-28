@@ -183,6 +183,23 @@ function manageSpawns(room) {
     if (!Memory._spawnWasBusy) { Memory._spawnWasBusy = true; console.log('spawn BUSY:', s.spawning, 'energy', room.energyAvailable); }
     return;
   } else { Memory._spawnWasBusy = false; Memory._spawnBusyTicks = 0; }
+  // Emergency recycle: if zero harvesters remain, recycle a non-harvester creep to fund new ones
+  const harvesterCreeps = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
+  if (harvesterCreeps.length === 0) {
+    const others = Object.values(Game.creeps).filter(c => c.memory.role !== 'harvester' && c.room.name === room.name);
+    if (others.length > 0) {
+      // Recycle the creep with the most body parts (most energy returned)
+      const victim = others.reduce((best, c) => (c.body.length > best.body.length ? c : best), others[0]);
+      if (victim.body.length >= 4) {
+        const result = s.recycleCreep(victim);
+        if (result === OK) {
+          console.log('Recycled', victim.name, 'to fund new harvesters');
+          return;
+        }
+      }
+    }
+  }
+
   const targets = getTargets(room);
   const controller = room.controller;
   const stage = getRoomStage(room);
