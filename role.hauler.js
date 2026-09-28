@@ -18,9 +18,17 @@ module.exports = function (creep) {
       }
     }
     if (!found) {
+      // Pick up dropped resources from destroyed construction sites
+      const dropped = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
+        filter: r => r.resourceType === RESOURCE_ENERGY && r.amount > 0
+      });
+      if (dropped && creep.pickup(dropped) === ERR_NOT_IN_RANGE) { creep.moveTo(dropped); found = true; }
+    }
+    if (!found) {
       // No containers to haul — harvest from source instead of stealing from spawn
       const src = creep.pos.findClosestByPath(FIND_SOURCES);
       if (creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
+      found = true;
     }
   } else {
     const r = creep.transfer(spawn, RESOURCE_ENERGY);
