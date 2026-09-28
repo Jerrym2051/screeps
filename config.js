@@ -91,19 +91,19 @@ function buildBody(role, budget) {
     if (budget >= 100) { b.push(CARRY, MOVE); }
     return b;
   }
-  // harvester: more WORK and CARRY for maximum energy harvest and transport per trip
+  // harvester: cheaper base body so they can spawn even when energy is low
   if (role === 'harvester') {
-    if (budget < 250) return [];
-    while (budget >= 250) { b.push(WORK, CARRY, CARRY, MOVE); budget -= 250; }
-    if (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
-    if (budget >= 100) { b.push(CARRY, MOVE); }
+    if (budget < 200) return [];
+    while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }
+    if (budget >= 100) { b.push(WORK, MOVE); budget -= 100; }
     return b;
   }
-  // upgrader: big CARRY to maximize energy per trip, fewer trips back to spawn
+  // upgrader: big CARRY to maximize energy per trip, cheaper base body
   if (role === 'upgrader') {
-    if (budget < 250) return [];
-    while (budget >= 250) { b.push(WORK, CARRY, CARRY, MOVE); budget -= 250; }
-    if (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget < 200) return [];
+    while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }
     if (budget >= 100) { b.push(CARRY, MOVE); }
     return b;
   }

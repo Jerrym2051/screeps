@@ -182,9 +182,8 @@ function placeExtractor(room) {
 }
 
 function buildPlan(room) {
-  // Always destroy leftover construction sites (builder disabled, sites reappear after restart)
-  const sites = room.find(FIND_CONSTRUCTION_SITES);
-  for (const s of sites) s.destroy();
+  // Build 2 defensive towers (RCL 3+)
+  placeTowers(room);
 }
 
 module.exports = { buildPlan };
