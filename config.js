@@ -207,11 +207,10 @@ function manageSpawns(room) {
     if (room.energyAvailable > 400 && role === 'harvester') { sc += 100; }
     if (sc > score) { score = sc; best = role; }
   }
-  if (room.energyAvailable >= 200 && controller && controller.level < 8) best = 'upgrader';
-  if (room.energyAvailable >= 300 && best === 'upgrader') {
-    const hc = counts['attacker'] || 0;
-    const dc = counts['defender'] || 0;
-    if (hostilesCount > dc + hc) best = 'attacker';
+  // Harvesters are the foundation — always prioritize them if unmet
+  if (targets.harvester > (counts['harvester'] || 0)) {
+    best = 'harvester';
+    score = 9999;
   }
   const body = buildBody(best, room.energyAvailable);
   if (body.length === 0 && best !== 'harvester') {
