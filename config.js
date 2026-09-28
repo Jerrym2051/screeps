@@ -111,8 +111,8 @@ function buildBody(role, budget) {
   // builder. Keep the 1-WORK/1-CARRY body only as the low-energy emergency floor.
   if (role === 'harvester') {
     if (budget < 200) return [];
-    if (budget >= 350) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C ~2.5/tick
-    else if (budget >= 300) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C ~1.8/tick
+    if (budget >= 340) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C (energy 350)
+    else if (budget >= 290) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C (energy 300)
     else { b.push(WORK, CARRY, MOVE); budget -= 200; }                            // 1W1C emergency floor
     while (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
     return b;
@@ -174,24 +174,18 @@ function getTargets(room) {
   if (stage === 'home') {
     // Use energyCapacityAvailable (grows with extensions) not energyAvailable (current stock)
     const budget = Math.max(room.energyAvailable, room.energyCapacityAvailable);
-    const HARVESTER_BODY_COST = 250; // [WORK, CARRY, CARRY, MOVE]
-    const ROUND_TRIP_TICKS = 30; // conservative estimate for room-scale walking
-    const CARRY_PER_HARVESTER = 100; // 2 CARRY per body
-    // Effective collection rate per harvester = CARRY / round-trip time
-    // [WORK, CARRY, CARRY, MOVE]: min(0.9, 100/30) = 0.9/tick (harvest-rate bottleneck)
-    // But travel overhead means effective rate ≈ 0.9 * (harvest_time / cycle) ≈ 0.7/tick
-    // Travel-time factor: multiply needed count to compensate
-    const TRAVEL_TIME_FACTOR = 3;
-    const WORK_PARTS_PER_BODY = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
-    const harvestRate = WORK_PARTS_PER_BODY * 0.9;
-    const maxAffordable = Math.max(1, Math.floor(budget / HARVESTER_BODY_COST));
     // Count remote sources from adjacent rooms for multi-room harvesting
     const remoteSources = countRemoteSources(room);
     const totalSources = sources.length + Math.min(remoteSources, 4);
-    // Desired harvesters per source to saturate it (accounting for travel time)
-    const harvestersPerSource = Math.max(1, Math.ceil(ENERGY_PER_TICK / harvestRate * TRAVEL_TIME_FACTOR));
-    // Cap total by what we can afford, but let the queue build up over ticks
-    targets.harvester = Math.min(totalSources * harvestersPerSource, maxAffordable)
+    // SATURATE each source: it regens ~10/tick and each WORK harvests ~2/tick, so
+    // ~5 WORK fully mines it; +1 for travel overhead so the source is always being
+    // harvested. Budget limits body SIZE, NOT the harvester COUNT — the old code
+    // capped the count by affordability (floor(budget/bodyCost)=1), starving the
+    // source to a single weak harvester -> ~2/tick income -> the collapse cycle.
+    const WORK_TO_SATURATE = 5;
+    const workPerBody = Math.max(1, buildBody('harvester', budget).filter(p => p === WORK).length);
+    const harvestersPerSource = Math.max(2, Math.ceil(WORK_TO_SATURATE / workPerBody) + 1);
+    targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
     targets.builder = 2;
@@ -247,25 +241,13 @@ function getTargets(room) {
     targets.attacker = 0;
     targets.repairer = 0;
   }
-  // Boost harvester targets only when there are MULTIPLE sources: one WORK harvester
-  // already saturates a single source's 10 energy/tick regen, so extra harvesters on
-  // a 1-source room just sit idle (wasting 200+ energy each and stalling spawns).
-  // With several sources, more collectors genuinely raise the collection rate.
-  if (room.energyAvailable < 500 && sources.length > 1) { targets.harvester += sources.length - 1; }
-  // Lean economy at RCL<3: only the spawn's ~350 capacity + 1 source. A builder is
-  // affordable ONLY when a 2-WORK harvester (~2.5/tick) exists to cover its drain;
-  // with the weak 1-WORK emergency harvester (~1.25/tick) a builder makes income<drain,
-  // energy oscillates ~200 and never banks to the 300 needed to upgrade the harvester
-  // -> a permanent builder-thrash with no growth. So gate the builder on harvester
-  // strength: bank energy (builder=0) until a 2-WORK harvester is spawned, then release
-  // exactly one builder. Haulers wait for RCL3's extensions.
-  if (controller && controller.level < 3) {
-    targets.hauler = 0;
-    const strongHarv = Object.values(Game.creeps).some(c =>
-      c.memory.role === 'harvester' && c.room.name === room.name &&
-      Array.isArray(c.body) && c.body.filter(p => p.type === WORK).length >= 2);
-    targets.builder = strongHarv ? 1 : 0;
-  }
+  // At RCL<3 there are no source containers yet, so haulers would idle — hold them
+  // (they auto-enable once containers exist via the filled>0 rule above). Builders
+  // are now affordable: with the source saturated (see harvester target) income is
+  // ~8-10/tick vs ~3/tick drain (2 builders + 1 upgrader), so the surplus banks and
+  // gets spent on construction. Spawn priority (harvester=0) fills harvesters FIRST,
+  // so builders only appear once income is established — no collapse.
+  if (controller && controller.level < 3) { targets.hauler = 0; }
   // Cap upgraders at 3 — they don't scale with room size
   targets.upgrader = Math.min(targets.upgrader || 0, 3);
   return targets;
@@ -387,25 +369,6 @@ function manageSpawns(room) {
       if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
       else console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
       return;
-    }
-  }
-
-  // Accelerate the income upgrade: if the room is near-banked (can afford a 2-WORK
-  // harvester) but ALL functional harvesters are weak 1-WORK emergency bodies,
-  // recycle one NOW so the next spawn is a 2-WORK harvester (~2.5/tick) that can
-  // sustain a builder — instead of waiting ~1500 ticks for the weak one to age out.
-  // Only fires when not near-death (the rescue path owns that case), with a cooldown.
-  if (controller && controller.level < 3 && !nearDeath && room.energyAvailable >= 300 &&
-      Game.time - (Memory._harvUpgTick || 0) >= 20) {
-    const weakHarvs = roomHarvesters.filter(c =>
-      Array.isArray(c.body) && c.body.filter(p => p.type === WORK).length < 2);
-    if (weakHarvs.length && weakHarvs.length === functionalHarvesterCount) {
-      const victim = weakHarvs[0];
-      if (typeof s.recycleCreep === 'function' && s.recycleCreep(victim) === OK) {
-        Memory._harvUpgTick = Game.time;
-        console.log('Recycled weak harvester', victim.name, '-> upgrade to 2-WORK, energy', room.energyAvailable);
-        return;
-      }
     }
   }
 
