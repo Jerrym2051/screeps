@@ -23,12 +23,18 @@ function placeContainers(room) {
   if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
   if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
   for (const src of sources) {
-    // Skip if a container already exists within 2 tiles of this source
+    // Skip if a container already exists (or is already being built) within
+    // 2 tiles of this source, so we never site two containers per source.
     const nearContainers = room.find(FIND_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
     if (nearContainers.length > 0) continue;
+    const nearSites = room.find(FIND_CONSTRUCTION_SITES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER &&
+        Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
+    });
+    if (nearSites.length > 0) continue;
 
     // Spiral outward from the source and place a container on the first
     // valid plain tile: not wall/swamp, not on the room edge (construction
