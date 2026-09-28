@@ -403,17 +403,14 @@ function manageSpawns(room) {
         }
       }
     }
-    if (functionalHarvesterCount > 0 && liveHarvesterCount > Math.max(targets.harvester || 0, sources.length)) {
-      const atSource = roomHarvesters.filter(hasCarry).filter(c => sources.some(src => src.pos.getRangeTo(c.pos) <= 2));
-      const idle = roomHarvesters.filter(hasCarry).filter(c => !sources.some(src => src.pos.getRangeTo(c.pos) <= 2));
-      if (idle.length && atSource.length >= 1) {
-        const victim = idle.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
-        if (s.recycleCreep(victim) === OK) {
-          console.log('Recycled idle harvester', victim.name, '(' + idle.length + ' idle /', liveHarvesterCount, 'harvesters vs', sources.length, 'sources), energy', room.energyAvailable);
-          return;
-        }
-      }
-    }
+    // NOTE: we deliberately do NOT recycle harvesters here. A harvester's
+    // position is a noisy "idle" signal — a worker carrying a full load back
+    // to the spawn, or walking empty back to its source, is >2 tiles from the
+    // source and would be misclassified as idle. Recycling it severs the energy
+    // supply (the exact deadlock we are trying to claw out of). Harvester
+    // over-staffing is prevented upstream (getTargets) and genuine
+    // zero-harvester crises are handled by the dedicated victim-recycle path
+    // above (which only touches non-harvesters / non-functional bodies).
   }
 
   // Build a list of roles that still need more creeps, with their priority
