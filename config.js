@@ -509,6 +509,11 @@ function manageSpawns(room) {
     // harvesters/builder up to 2-WORK automatically as energyAvailable rises.
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
+    // Pre-container: don't replace a lost harvester with another 1-WORK body while
+    // functional harvesters still run — a 1-WORK spawn (~200) just resets the bank
+    // to ~0 and perpetuates the carry-trip thrash, blocking the climb to 290+.
+    // Wait for a 2-WORK body (>=290) the live harvesters are banking toward.
+    if (role === 'harvester' && room.energyAvailable < 290 && functionalHarvesterCount > 0) continue;
     // Pick best source for harvesters
     const memory = { role };
     if (role === 'harvester') {
