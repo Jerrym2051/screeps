@@ -632,6 +632,21 @@ function manageSpawns(room) {
     return;
   }
 
+  // Expansion: field ONE claimer for the east outpost when the home bank is full
+  // (energyAvailable == capacity). Bypassing the priority queue guarantees the
+  // one-time claimer goes out before a routine hauler-TTL replenishment drains the
+  // bank below the claimer's cost (which had the claimer flap on/off forever).
+  // Full-bank gating means it never starves income roles.
+  if (targets.claimerTarget && (counts.claimer || 0) === 0 &&
+      room.energyAvailable >= room.energyCapacityAvailable) {
+    const cbody = buildBody('claimer', room.energyAvailable);
+    if (cbody.length) {
+      const result = s.createCreep(cbody, 'claimer' + Game.time, { role: 'claimer', targetRoom: targets.claimerTarget });
+      console.log('spawned', typeof result === 'string' ? result : result, 'role claimer targetRoom', targets.claimerTarget, 'energy', room.energyAvailable);
+      return;
+    }
+  }
+
   // Build a list of roles that still need more creeps, with their priority
   // If a role has reached its target (need <= 0), priority becomes 100 (lowest)
   const candidates = [];
