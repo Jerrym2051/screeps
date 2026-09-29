@@ -341,6 +341,10 @@ function manageSpawns(room) {
   const stage = getRoomStage(room);
   const counts = {};
   for (const name in Game.creeps) { const r = Game.creeps[name].memory.role; counts[r] = (counts[r] || 0) + 1; }
+  // Built source containers (the income unlock). `filled` from getTargets is not in
+  // this scope, so compute the container count here (a built container, even empty,
+  // means harvesters can dump at the source and the upgrader is affordable again).
+  const contStruct = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
 
    // Harvester crisis recovery (prevents the energy-death deadlock):
   //  - Proactive: a FUNCTIONAL harvester nearing end-of-life -> spawn its
@@ -443,7 +447,7 @@ function manageSpawns(room) {
     //     upgrader — NOT the builder — to stop the bleed; the builder is the income
     //     unlock and must survive to finish the container. Once a container exists,
     //     harvesters dump at the source, income jumps, and the upgrader respawns.
-    if (controller && controller.level < 3 && (filled || 0) === 0 && (counts.upgrader || 0) > 0) {
+    if (controller && controller.level < 3 && contStruct === 0 && (counts.upgrader || 0) > 0) {
       const upgs = Object.values(Game.creeps)
         .filter(c => c.memory.role === 'upgrader' && c.room.name === room.name && c.body.length >= 2);
       if (upgs.length) {
@@ -465,6 +469,24 @@ function manageSpawns(room) {
           console.log('Bootstrap: recycled builder', victim.name, 'to fund harvester (harv', (counts.harvester || 0) + '/' + targets.harvester + ') energy', room.energyAvailable);
           return;
         }
+      }
+    }
+  }
+
+  // Pre-container builder upgrade: the source container costs 5000 build progress,
+  // and a 1-WORK builder caps at 1 build/tick (hours to finish). When the pool can
+  // afford a 2-WORK builder (cost 410), recycle any living builder with <2 WORK so a
+  // 2-WORK builder can spawn — doubling the build rate. This runs whenever the pool
+  // has the energy (not just during the <prodCost slim-down).
+  if (controller && controller.level < 3 && contStruct === 0 && room.energyAvailable >= 410 && typeof s.recycleCreep === 'function') {
+    const weakBlds = Object.values(Game.creeps)
+      .filter(c => c.memory.role === 'builder' && c.room.name === room.name &&
+        c.body.filter(p => p.type === WORK).length < 2);
+    if (weakBlds.length) {
+      const victim = weakBlds[0];
+      if (s.recycleCreep(victim) === OK) {
+        console.log('Upgrade: recycled weak builder', victim.name, 'for a 2-WORK builder, energy', room.energyAvailable);
+        return;
       }
     }
   }
