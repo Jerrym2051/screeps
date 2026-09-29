@@ -297,7 +297,7 @@ function reportStatus(room) {
   const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER });
   const contProg = contSites.length ? Math.max(...contSites.map(s => s.progress)) : 0;
   const sources = room.find(FIND_SOURCES);
-  if (Game.time % 50 === 0) console.log('[DIAG] contStruct=' + contStruct.length + ' sites=' + sites + ' myStructs=' + room.find(FIND_MY_STRUCTURES).map(s => s.structureType).join(',') + ' allCont=' + room.find(FIND_STRUCTURES).filter(s => s.structureType === STRUCTURE_CONTAINER && s.room.name === room.name).length);
+  if (Game.time % 50 === 0) console.log('[DIAG] contStruct=' + contStruct.length + ' sites=' + sites + ' conts=' + room.find(FIND_STRUCTURES).filter(s => s.structureType === STRUCTURE_CONTAINER && s.room.name === room.name).map(s => (s.my ? 'mine' : (s.owner || 'none')) + '@' + s.pos.x + ',' + s.pos.y + ':' + s.store.getUsedCapacity(RESOURCE_ENERGY)).join(' | '));
   const sp = room.find(FIND_MY_SPAWNS)[0];
   const spawning = sp && sp.spawning ? ('busy:' + (sp.spawning.name || 'creep')) : 'idle';
   const stage = getRoomStage(room);
