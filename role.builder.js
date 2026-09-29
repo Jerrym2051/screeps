@@ -16,24 +16,21 @@ module.exports = function (creep) {
     }
   }
   if (!site) site = creep.pos.findClosestByPath(FIND_CONSTRUCTION_SITES);
-  if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-    // Fill WITHOUT camping the spawn: harvesters drop energy at the spawn, so a
-    // builder hovering there waiting for the pool to refill blocks their shortest
-    // drop-off route. Prefer a filled container (free, usually right at the build
-    // site); else the spawn only if it can top us off in one go; else fill at the
-    // source. This keeps builders on their build route instead of the spawn tiles.
-    const need = creep.store.getFreeCapacity(RESOURCE_ENERGY);
+  if (creep.store.getFreeCapacity(RESOURCE_ENERGY) >= 45) {
+    // Refill only when nearly EMPTY so we put ALL energy to work first (build ~45
+    // ticks per trip) instead of topping off 1 energy after every build and camping
+    // the spawn tiles (which blocks harvesters' drop-off route). Pull the spawn's
+    // FULL available amount in one withdrawal (min(freeCarry, available)); only mine
+    // the source when the spawn is empty. One withdrawal then leave to build.
     const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
-    const src = creep.pos.findClosestByRange(FIND_SOURCES);
     if (cont) {
       if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont);
-    } else if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) >= need) {
+    } else if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
       if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
-    } else if (src) {
-      if (creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
-    } else if (spawn) {
-      if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
+    } else {
+      const src = creep.pos.findClosestByRange(FIND_SOURCES);
+      if (src && creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
     }
   } else if (!site) {
     if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);

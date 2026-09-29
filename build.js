@@ -23,8 +23,14 @@ function placeContainers(room) {
   if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
   if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
   for (const src of sources) {
-    // Skip if a container already exists (or is already being built) within
-    // 2 tiles of this source, so we never site two containers per source.
+    // (1) Once we've committed to a spot for a source (tracked in memory), NEVER
+    //     place a second container for it. The 2-tile room.find dedup below misses
+    //     sites on the 3rd ring, which is what spawned the duplicate containers
+    //     (one source got 3 sites) and starved the builders' focus.
+    const srcMem = Memory.rooms[room.name].sources[src.id];
+    if (srcMem && srcMem.containerPos) continue;
+    // (2) Safety net: skip if a container (structure or site) already exists near
+    //     the source.
     const nearContainers = room.find(FIND_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
@@ -39,9 +45,10 @@ function placeContainers(room) {
     // Spiral outward from the source and place a container on the first
     // valid plain tile: not wall/swamp, not on the room edge (construction
     // sites require x/y in 1..48), not inside the spawn-clear radius, and
-    // not blocked by an existing structure/construction site.
+    // not blocked by an existing structure/construction site. r<=4 reaches a
+    // plain tile even when the source is ringed by walls/swamp.
     let placed = false;
-    for (let r = 1; r <= 3 && !placed; r++) {
+    for (let r = 1; r <= 4 && !placed; r++) {
       for (const pos of ring(src.pos, r)) {
         if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
         const t = room.getTerrain().get(pos.x, pos.y);
