@@ -485,6 +485,23 @@ function manageSpawns(room) {
     }
   }
 
+  // Excess upgrader reclamation after a cap reduction (e.g. 5 -> 3): the cap cuts the
+  // target, but existing creeps live out their TTL — at 2-WORK each that drains ~10/tick
+  // against the single-source 10/tick income, faster than the buffer refills. Recycle
+  // the surplus down to target NOW (highest-TTL first => max energy refund) instead of
+  // waiting for natural death. NEVER during a harvester crisis (needRescue): those
+  // creeps fund the income and must not be shed to pay for themselves.
+  if (!needRescue && typeof s.recycleCreep === 'function' && (counts.upgrader || 0) > (targets.upgrader || 0)) {
+    const upgs = Object.values(Game.creeps)
+      .filter(c => c.memory.role === 'upgrader' && c.room.name === room.name && c.body.length >= 2)
+      .sort((a, b) => (b.ticksToLive || 0) - (a.ticksToLive || 0)); // highest TTL first (max refund)
+    const victim = upgs[0];
+    if (victim && s.recycleCreep(victim) === OK) {
+      console.log('Recycled surplus upgrader', victim.name, '(' + ((counts.upgrader || 0) - (targets.upgrader || 0)) + ' over target), bank', room.energyAvailable);
+      return;
+    }
+  }
+
   // Economy slim-down: when critically starved (< prodCost), shed replaceable
   // creeps so the spawn can bank energy for the next RCL gate (harvester or
   // upgrader). NEVER touches harvesters — a worker's position is a noisy idle
