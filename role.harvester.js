@@ -46,18 +46,18 @@ function findDumpTarget(creep, source) {
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {
     const pos = new RoomPosition(mem.x, mem.y, mem.roomName);
-    const site = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER && s.my);
+    const site = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0);
     if (site && site.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return site;
   }
   // 2) any container adjacent to the source (the real source container)
   if (source) {
-    const near = source.pos.findInRange(FIND_MY_STRUCTURES, 3, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
-    if (near.length) return near[0];
+    const near = source.pos.findInRange(FIND_STRUCTURES, 3, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (near.length) return creep.pos.findClosestByRange(near);
   }
   // 3) any container in the room (closest)
-  const any = creep.room.find(FIND_MY_STRUCTURES, {
-    filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+  const any = creep.room.find(FIND_STRUCTURES, {
+    filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
   if (any.length) return creep.pos.findClosestByRange(any);
   // 4) storage (RCL 4+)
   if (c && c.level >= 4) {

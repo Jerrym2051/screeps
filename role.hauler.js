@@ -4,18 +4,16 @@ module.exports = function (creep) {
   const c = creep.room.controller;
   if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
     let found = false;
-    const mem = Memory.rooms?.[creep.room.name]?.sources;
-    if (mem) {
-      for (const sid in mem) {
-        const cp = mem[sid].containerPos;
-        if (!cp || cp.x == null || cp.y == null || !cp.roomName) continue;
-        const pos = new RoomPosition(cp.x, cp.y, cp.roomName);
-        const container = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER);
-        if (container && container.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
-          if (creep.withdraw(container, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(container, { reusePath: 5 });
-          found = true; break;
-        }
-      }
+    // Withdraw from the fullest usable container (ours OR ownerless-but-usable);
+    // scanning all of them (not just memory's single dump spot) is what lets a
+    // hauler drain the 2000-energy source container the harvesters filled.
+    const full = creep.room.find(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0
+    });
+    if (full.length) {
+      const best = full.reduce((a, b) => a.store.getUsedCapacity(RESOURCE_ENERGY) >= b.store.getUsedCapacity(RESOURCE_ENERGY) ? a : b);
+      if (creep.withdraw(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
+      found = true;
     }
     if (!found) {
       // Pick up dropped resources from destroyed construction sites

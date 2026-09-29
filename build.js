@@ -33,7 +33,7 @@ function placeContainers(room) {
     if (srcMem.containerPos) {
       const cp = srcMem.containerPos;
       const pos = new RoomPosition(cp.x, cp.y, cp.roomName);
-      const hasStruct = pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_CONTAINER && s.my);
+      const hasStruct = pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner));
       const hasSite = pos.lookFor(LOOK_CONSTRUCTION_SITES).length > 0;
       if (hasStruct || hasSite) continue; // committed spot is real — leave it alone
       if (Game.time < (srcMem.retryAt || 0)) continue; // rate-limit re-placement (no thrash)
@@ -43,12 +43,24 @@ function placeContainers(room) {
     // (2) Adopt any container that already exists near the source (structure or
     //     site) into memory so the builder focuses on it instead of ramparts. This
     //     also heals the old duplicate-container sites (one becomes the target).
-    const nearContainers = room.find(FIND_MY_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER &&
+    const nearContainers = room.find(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
     if (nearContainers.length > 0) {
-      srcMem.containerPos = { x: nearContainers[0].pos.x, y: nearContainers[0].pos.y, roomName: room.name };
+      // Prefer the container with the most free capacity so harvesters always have
+      // a live dump target (an arbitrary pick could land on a full 2000/2000 one).
+      const best = nearContainers.reduce((a, b) =>
+        (a.store.getFreeCapacity(RESOURCE_ENERGY) >= b.store.getFreeCapacity(RESOURCE_ENERGY) ? a : b));
+      srcMem.containerPos = { x: best.pos.x, y: best.pos.y, roomName: room.name };
+      // A usable container already exists — cancel any redundant container site we
+      // started near this source (e.g. the one built while they were misread as foreign).
+      for (const site of room.find(FIND_CONSTRUCTION_SITES, {
+        filter: s => s.structureType === STRUCTURE_CONTAINER && s.my &&
+          Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2 })) {
+        site.remove();
+        console.log('removed redundant container site at', site.pos.x, site.pos.y);
+      }
       continue;
     }
     const nearSites = room.find(FIND_CONSTRUCTION_SITES, {

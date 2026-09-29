@@ -150,7 +150,11 @@ function getTargets(room) {
   const controller = room.controller;
   const sites = room.find(FIND_CONSTRUCTION_SITES).length;
   const drops = room.find(FIND_DROPPED_RESOURCES).length;
-  const containers = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER });
+  // Containers our creeps can actually use = ours OR neutral/ownerless (in this
+  // server transfers to ownerless containers work, and we built the ones here).
+  // Using FIND_MY_STRUCTURES missed them, so `filled` stayed 0 and hauler+upgrader
+  // were gated off forever even though a container held 2000 energy.
+  const containers = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) });
   const filled = containers.filter(c => c.store.getUsedCapacity(RESOURCE_ENERGY) > 0).length;
   const stage = getRoomStage(room);
 
@@ -296,11 +300,11 @@ function reportStatus(room) {
   }
   const dropped = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
   const sites = room.find(FIND_CONSTRUCTION_SITES).length;
-  const contStruct = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER });
+  const contStruct = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) });
+  const contFilled = contStruct.filter(c => c.store.getUsedCapacity(RESOURCE_ENERGY) > 0).length;
   const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER });
   const contProg = contSites.length ? Math.max(...contSites.map(s => s.progress)) : 0;
   const sources = room.find(FIND_SOURCES);
-  if (Game.time % 50 === 0) console.log('[DIAG] contStruct=' + contStruct.length + ' sites=' + sites + ' conts=' + room.find(FIND_STRUCTURES).filter(s => s.structureType === STRUCTURE_CONTAINER && s.room.name === room.name).map(s => (s.my ? 'mine' : (s.owner || 'none')) + '@' + s.pos.x + ',' + s.pos.y + ':' + s.store.getUsedCapacity(RESOURCE_ENERGY)).join(' | '));
   const sp = room.find(FIND_MY_SPAWNS)[0];
   const spawning = sp && sp.spawning ? ('busy:' + (sp.spawning.name || 'creep')) : 'idle';
   const stage = getRoomStage(room);
@@ -311,7 +315,7 @@ function reportStatus(room) {
     ' deficit ' + (deficit.length ? deficit.join(',') : 'none') +
     ' dropped ' + dropped +
     ' sites ' + sites +
-    ' cont ' + contStruct.length + '/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
+    ' cont ' + contStruct.length + 'u/' + contFilled + 'f/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
     ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
     ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
     ' spawn ' + spawning);
