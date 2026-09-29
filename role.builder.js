@@ -17,11 +17,23 @@ module.exports = function (creep) {
   }
   if (!site) site = creep.pos.findClosestByPath(FIND_CONSTRUCTION_SITES);
   if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-    const r = creep.withdraw(spawn, RESOURCE_ENERGY);
-    if (r === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
-    else if (r === ERR_NOT_ENOUGH_RESOURCES) {
-      const src = creep.pos.findClosestByPath(FIND_SOURCES);
+    // Fill WITHOUT camping the spawn: harvesters drop energy at the spawn, so a
+    // builder hovering there waiting for the pool to refill blocks their shortest
+    // drop-off route. Prefer a filled container (free, usually right at the build
+    // site); else the spawn only if it can top us off in one go; else fill at the
+    // source. This keeps builders on their build route instead of the spawn tiles.
+    const need = creep.store.getFreeCapacity(RESOURCE_ENERGY);
+    const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
+    const src = creep.pos.findClosestByRange(FIND_SOURCES);
+    if (cont) {
+      if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont);
+    } else if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) >= need) {
+      if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
+    } else if (src) {
       if (creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
+    } else if (spawn) {
+      if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
     }
   } else if (!site) {
     if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
