@@ -206,7 +206,9 @@ function getTargets(room) {
           + (controller && controller.level < 3 && room.energyAvailable >= 400 ? 1 : 0)
           + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0))
       : 0;
-    targets.builder = haveContainer ? 2 : 1;
+    targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
+                       // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
+                       // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = 0;
