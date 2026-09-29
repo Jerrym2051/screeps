@@ -27,9 +27,9 @@ module.exports = function (creep) {
       if (creep.transfer(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
       return;
     }
-    // Banks full: spill into a container with room (the spawn-side bank containers
-    // we build act as overflow storage). Without this a full hauler stalls and
-    // harvesters overflow to the ground.
+    // Banks full: spill into the container closest to the spawn (spawn-side bank
+    // containers act as overflow storage; preferring the nearest one keeps the
+    // haul loop short and leaves the source container as the harvest buffer).
     const nearCont = creep.pos.findInRange(FIND_STRUCTURES, 3, {
       filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
     });
@@ -38,7 +38,9 @@ module.exports = function (creep) {
     });
     const cbest = nearCont.length ? nearCont : farCont;
     if (cbest.length) {
-      const best = cbest.reduce((a, b) => a.store.getFreeCapacity(RESOURCE_ENERGY) >= b.store.getFreeCapacity(RESOURCE_ENERGY) ? a : b);
+      const best = spawn
+        ? cbest.reduce((a, b) => a.pos.getRangeTo(spawn) <= b.pos.getRangeTo(spawn) ? a : b)
+        : cbest.reduce((a, b) => a.store.getFreeCapacity(RESOURCE_ENERGY) >= b.store.getFreeCapacity(RESOURCE_ENERGY) ? a : b);
       if (creep.transfer(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
       return;
     }
