@@ -187,14 +187,15 @@ function getTargets(room) {
     const harvestersPerSource = Math.min(7, Math.max(4, Math.ceil(WORK_TO_SATURATE / workPerBody) + 3));
     targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
-    // Only run upgraders once the source->container->haul income loop is live (a
-    // built container lets harvesters dump ~10/tick instead of carry-tripping at
-    // ~1/tick). Before that, bank every energy into the 2000-hit container site;
-    // spending on RCL now just starves the container and leaves harvesters
-    // dropping energy on the ground (the 02:50 'dropped 100' stall).
-    targets.upgrader = containers.length > 0
-      ? 1 + (controller && controller.level < 2 ? 2 : 0) + (room.energyAvailable >= 500 ? 1 : 0)
-      : 0;
+    // Upgraders must run to hold the controller against its downgrade timer (~8k
+    // ticks) and push RCL. Scaled by surplus so they only take energy the
+    // harvester+builder foundation isn't using: 1 always (anti-downgrade), +1 at
+    // >=400 bank, +1 at >=500. The harvesters now dump into the 550 pool, so the
+    // bank can fund them. Builder (container/income) is priority 30, upgrader 5,
+    // so the income unlock still progresses on the bank between upgrades.
+    targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0)
+      + (controller && controller.level < 3 && room.energyAvailable >= 400 ? 1 : 0)
+      + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0);
     targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
