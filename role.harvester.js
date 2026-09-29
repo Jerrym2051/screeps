@@ -42,27 +42,12 @@ function findRemoteSource(creep) {
 function findDumpTarget(creep, source) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
-  // COLD-START GUARD: only while NO hauler exists yet. The bank is refilled by a
-  // hauler once the container economy runs, but the first hauler has to be spawned
-  // from spawn energy, so until one is alive harvesters top the bank. Once a hauler
-  // exists, harvesters dump into the source container CONSISTENTLY — toggling back
-  // to the spawn on every energyAvailable dip is what made them ping-pong.
-  const haulers = creep.room.find(FIND_MY_CREEPS, {
-    filter: cr => cr.memory && cr.memory.role === 'hauler'
-  });
-  if (haulers.length === 0) {
-    if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
-    const ext = creep.room.find(FIND_MY_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
-    if (ext.length) return creep.pos.findClosestByRange(ext);
-    if (spawn) return spawn; // bank full (or spawn is the only sink) — fall back
-  }
   // 1) source's own container (by memory), verified to actually exist + have space
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {
     const pos = new RoomPosition(mem.x, mem.y, mem.roomName);
     const site = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0);
-    if (site && site.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return site;
+    if (site) return site;
   }
   // 2) any container adjacent to the source (the real source container)
   if (source) {
@@ -80,18 +65,24 @@ function findDumpTarget(creep, source) {
       filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 })[0];
     if (storage) return storage;
   }
-  // 5) empty EXTENSION — fill the energy pool (energyAvailable = spawn + extensions)
-  //    so it climbs to 550 and bodies scale to 2-WORK. Pre-container the harvesters
-  //    are the only energy source, and the spawn drains fast (builders withdraw it),
-  //    so the spawn rarely reaches its 300 cap and the 5 extensions never fill via
-  //    overflow. So dump straight into the nearest empty extension instead.
-  const ext = creep.room.find(FIND_MY_STRUCTURES, {
-    filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
-  if (ext.length) return creep.pos.findClosestByRange(ext);
-  // 6) spawn (if it has room)
-  if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
-  // 7) fallback (everything full — only spills once the pool is saturated)
-  return spawn;
+  // No container has space. Decide between topping the bank and idling near the source.
+  const haulers = creep.room.find(FIND_MY_CREEPS, {
+    filter: cr => cr.memory && cr.memory.role === 'hauler'
+  });
+  // Cold-start (no hauler yet) OR the bank is critically low: dump into the pool so
+  // the spawn can build the next hauler/creep. (The old always-on <150 check ping-ponged
+  // the harvesters; gating it on "no container space" means it only fires when the
+  // containers are genuinely full, i.e. the haulers aren't keeping up.)
+  if (haulers.length === 0 || creep.room.energyAvailable < 150) {
+    if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
+    const ext = creep.room.find(FIND_MY_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (ext.length) return creep.pos.findClosestByRange(ext);
+    return spawn;
+  }
+  // Bank healthy + hauler running + containers full: DON'T cross the room to the
+  // spawn — idle beside the source so we dump the instant a hauler frees space.
+  return null;
 }
 
 // Is the spawn blocked by other creeps?
@@ -169,30 +160,22 @@ module.exports = function (creep) {
   } else {
     // Full — dump.
     const dump = findDumpTarget(creep, source);
-    if (dump && dump.structureType === STRUCTURE_CONTAINER) {
+    if (!dump) {
+      // Containers full + hauler running + bank healthy: idle on a free tile beside
+      // the source (by the containers) so we dump the instant a hauler frees space,
+      // instead of crossing the room to the spawn every cycle.
+      const wait = findWaitTile(creep, source);
+      if (wait) { if (creep.pos.getRangeTo(wait) > 1) creep.moveTo(wait, { reusePath: 5 }); }
+      else if (spawn) { creep.moveTo(spawn, { reusePath: 3 }); }
+    } else if (dump.structureType === STRUCTURE_CONTAINER) {
+      const res = creep.transfer(dump, RESOURCE_ENERGY);
+      if (res === ERR_NOT_IN_RANGE) creep.moveTo(dump, { reusePath: 5 });
+    } else {
+      // Cold-start: top the bank (spawn/extension) so the next hauler/creep can spawn.
       const res = creep.transfer(dump, RESOURCE_ENERGY);
       if (res === ERR_NOT_IN_RANGE) {
-        // Move toward the container but stay staged near the source so we don't
-        // cross the whole room to the spawn on every full cycle.
-        creep.moveTo(dump, { reusePath: 5 });
-      }
-    } else if (dump === spawn) {
-      // Cold-start fallback: top the bank directly so the spawn can build a hauler.
-      const res = creep.transfer(spawn, RESOURCE_ENERGY);
-      if (res === ERR_NOT_IN_RANGE) {
         if (c && creep.pos.getRangeTo(c) <= 3) creep.upgradeController(c);
-        else creep.moveTo(spawn, { reusePath: 3 });
-      }
-    } else {
-      // Containers are full AND a hauler is running: the bank is being fed from the
-      // container, so DON'T walk all the way to the spawn. Idle on a free tile next
-      // to the source (by the containers) so the moment a hauler frees space we dump
-      // immediately instead of having to walk the source->spawn corridor.
-      const wait = findWaitTile(creep, source);
-      if (wait) {
-        if (creep.pos.getRangeTo(wait) > 1) creep.moveTo(wait, { reusePath: 5 });
-      } else if (spawn) {
-        creep.moveTo(spawn, { reusePath: 3 });
+        else creep.moveTo(dump, { reusePath: 3 });
       }
     }
   }
