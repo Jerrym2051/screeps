@@ -55,10 +55,10 @@ function findDumpTarget(creep, source) {
       filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
     if (near.length) return creep.pos.findClosestByRange(near);
   }
-  // 3) any container in the room (closest)
-  const any = creep.room.find(FIND_STRUCTURES, {
-    filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
-  if (any.length) return creep.pos.findClosestByRange(any);
+  // (No room-wide container search: harvesters must NOT cross the room to dump into
+  // the far spawn-side bank containers — that made them "run around" instead of
+  // mining. Those bank containers are the HAULERS' job. If no container near the
+  // source has space, fall through to the cold-start/idle logic below.)
   // 4) storage (RCL 4+)
   if (c && c.level >= 4) {
     const storage = creep.room.find(FIND_MY_STRUCTURES, {
