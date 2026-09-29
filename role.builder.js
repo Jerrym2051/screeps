@@ -32,9 +32,27 @@ module.exports = function (creep) {
       const src = creep.pos.findClosestByRange(FIND_SOURCES);
       if (src && creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
     }
-  } else if (!site) {
-    if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
-  } else if (creep.build(site) === ERR_NOT_IN_RANGE) {
-    creep.moveTo(site, { reusePath: 5 });
+  } else {
+    // Bootstrap extension top-off: while no source container is built there is no
+    // hauler, so a builder keeps the 5 extensions fed. That lifts energyAvailable
+    // to energyCapacityAvailable (550) so the next builder is a 2-WORK body
+    // (cost 410) — a 1-WORK builder needs ~2000 ticks for the 2000-hit container,
+    // a 2-WORK one ~500. Once a container exists the hauler owns extension-filling.
+    const haveContainer = !!creep.room.find(FIND_MY_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
+    if (!haveContainer) {
+      const ext = creep.pos.findInRange(FIND_MY_STRUCTURES, 3, {
+        filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+      })[0];
+      if (ext) {
+        if (creep.transfer(ext, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(ext);
+        return;
+      }
+    }
+    if (!site) {
+      if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
+    } else if (creep.build(site) === ERR_NOT_IN_RANGE) {
+      creep.moveTo(site, { reusePath: 5 });
+    }
   }
 };

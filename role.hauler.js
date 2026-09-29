@@ -31,8 +31,19 @@ module.exports = function (creep) {
       found = true;
     }
   } else {
-    const r = creep.transfer(spawn, RESOURCE_ENERGY);
-    if (r === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
-    else if (r !== OK) { if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c); }
+    // Logistics chain: top the energy BANK up. Fill empty extensions first (each
+    // +50 capacity, capped by RCL), then the spawn, so energyAvailable reaches
+    // energyCapacityAvailable and bodies scale up (2-WORK harvesters/builders)
+    // instead of staying carry-trip 1-WORK at the spawn-only bank.
+    const ext = creep.pos.findInRange(FIND_MY_STRUCTURES, 3, {
+      filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+    })[0];
+    if (ext) {
+      if (creep.transfer(ext, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(ext);
+    } else {
+      const r = creep.transfer(spawn, RESOURCE_ENERGY);
+      if (r === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
+      else if (r !== OK) { if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c); }
+    }
   }
 };
