@@ -396,6 +396,10 @@ function reportStatus(room) {
     const srcs = room.find(FIND_SOURCES).map(s => s.pos.x + ',' + s.pos.y + ':' + room.name);
     const conts = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).map(c => c.pos.x + ',' + c.pos.y + ':' + c.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + c.store.getCapacity(RESOURCE_ENERGY));
     console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|'));
+    const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.pos + '/ttl=' + x.ticksToLive + '/fat=' + x.fatigue);
+    const e47 = Game.rooms.E47S42;
+    const e47info = e47 ? 'vis cl' + (e47.controller && e47.controller.my ? 'Y' : 'N') + ' rcl' + (e47.controller ? e47.controller.level : 0) : 'unseen stage=' + JSON.stringify((Memory.rooms.E47S42 && Memory.rooms.E47S42.stage) || 'none');
+    console.log('[CLM] claimer=[' + cl.join(',') + '] E47S42=' + e47info);
   }
 }
 
@@ -641,20 +645,23 @@ function manageSpawns(room) {
     return;
   }
 
-  // Expansion: field ONE claimer for the east outpost once the home bank has
-  // recovered enough (>= 500) to absorb the claimer cost (~350-410) and still
-  // keep income roles running. Bypassing the priority queue guarantees the
-  // one-time claimer goes out before a routine hauler-TTL replenishment grabs
-  // the slot when the bank peaks — which had the claimer flap on/off forever.
-  if (targets.claimerTarget && (counts.claimer || 0) === 0 &&
-      room.energyAvailable >= 500 && room.energyAvailable >= room.energyCapacityAvailable - 150) {
-    const cbody = buildBody('claimer', room.energyAvailable);
-    if (cbody.length) {
-      const result = s.createCreep(cbody, 'claimer' + Game.time, { role: 'claimer', targetRoom: targets.claimerTarget });
-      console.log('spawned', typeof result === 'string' ? result : result, 'role claimer targetRoom', targets.claimerTarget, 'energy', room.energyAvailable);
-      return;
+    // Expansion: field ONE claimer for the east outpost once the home bank has
+    // recovered enough (>= 500) to absorb the claimer cost and still keep income
+    // roles running. Bypassing the priority queue guarantees the one-time claimer
+    // goes out before a routine hauler-TTL replenishment grabs the slot when the
+    // bank peaks — which had the claimer flap on/off forever. Gate on the REAL
+    // body cost (bodyCost) instead of a stock-350 threshold, because this server's
+    // CLAIM part is non-standard (~600 for [CLAIM,MOVE]); that's what produced the
+    // -6 retries before 650.
+    if (targets.claimerTarget && (counts.claimer || 0) === 0 &&
+        room.energyAvailable >= 500 && room.energyAvailable >= room.energyCapacityAvailable - 150) {
+      const cbody = buildBody('claimer', room.energyAvailable);
+      if (cbody.length && bodyCost(cbody) <= room.energyAvailable) {
+        const result = s.createCreep(cbody, 'claimer' + Game.time, { role: 'claimer', targetRoom: targets.claimerTarget });
+        console.log('spawned', typeof result === 'string' ? result : result, 'role claimer targetRoom', targets.claimerTarget, 'bodycost', bodyCost(cbody), 'energy', room.energyAvailable);
+        return;
+      }
     }
-  }
 
   // Build a list of roles that still need more creeps, with their priority
   // If a role has reached its target (need <= 0), priority becomes 100 (lowest)
