@@ -193,9 +193,13 @@ function getTargets(room) {
     // harvested. Budget limits body SIZE, NOT the harvester COUNT — the old code
     // capped the count by affordability (floor(budget/bodyCost)=1), starving the
     // source to a single weak harvester -> ~2/tick income -> the collapse cycle.
+    // 1 source regens ~10/tick and each WORK mines ~2/tick, so ~5 WORK fully mines
+    // it. With 2-WORK bodies that's ~2-3 harvesters; +1 for travel. The old +3/max(4)
+    // over-provisioned to 6 harvesters on a single source -> 6x300 spawn churn that
+    // ate the bank the upgrader needs. Cap tighter so surplus energy funds RCL3.
     const WORK_TO_SATURATE = 5;
     const workPerBody = Math.max(1, buildBody('harvester', budget).filter(p => p === WORK).length);
-    const harvestersPerSource = Math.min(7, Math.max(4, Math.ceil(WORK_TO_SATURATE / workPerBody) + 3));
+    const harvestersPerSource = Math.min(5, Math.max(3, Math.ceil(WORK_TO_SATURATE / workPerBody) + 1));
     targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
     // Upgraders must run to hold the controller against its downgrade timer (~8k
