@@ -187,7 +187,14 @@ function getTargets(room) {
     const harvestersPerSource = Math.min(7, Math.max(4, Math.ceil(WORK_TO_SATURATE / workPerBody) + 3));
     targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
-    targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0) + (controller && controller.level < 3 && room.energyAvailable >= 300 ? 1 : 0) + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0);
+    // Only run upgraders once the source->container->haul income loop is live (a
+    // built container lets harvesters dump ~10/tick instead of carry-tripping at
+    // ~1/tick). Before that, bank every energy into the 2000-hit container site;
+    // spending on RCL now just starves the container and leaves harvesters
+    // dropping energy on the ground (the 02:50 'dropped 100' stall).
+    targets.upgrader = containers.length > 0
+      ? 1 + (controller && controller.level < 2 ? 2 : 0) + (room.energyAvailable >= 500 ? 1 : 0)
+      : 0;
     targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
@@ -351,9 +358,16 @@ function manageSpawns(room) {
       // Near-death only & too broke to replace yet: let the living FUNCTIONAL
       // harvester keep collecting so a replacement can be afforded next tick.
     } else {
+      // Near-death (re)placement only: insist on a 2-WORK body (>= 300). A 1-WORK
+      // harvester from the 200-289 budget farms ~1/tick — less than it costs the
+      // pool to spawn it once per death, so it is an income SINK that bleeds the
+      // bank. The living near-death harvester keeps collecting meanwhile; by the
+      // time the bank recovers to 300 the replacement is a 2-WORK (~8/tick) one.
+      // (functionalHarvesterCount === 0 is the TRUE crisis path, still allowed at
+      // prodCost 200 via the branch above.)
+      if (functionalHarvesterCount > 0 && room.energyAvailable < 300) return;
       // Scale the replacement with current energy: banked energy -> a 2-WORK
-      // harvester (~2.5/tick) that sustains upgrader + builder; tight energy ->
-      // the [W,C,M] floor (prodBody stays the crisis minimum).
+      // harvester (~2.5/tick) that sustains upgrader + builder.
       let body = buildBody('harvester', room.energyAvailable);
       if (!body.length) body = prodBody;
       const memory = { role: 'harvester' };
@@ -366,7 +380,7 @@ function manageSpawns(room) {
       if (bestSrc) memory.sourceId = bestSrc.id;
       const result = s.createCreep(body, 'harvester' + Game.time, memory);
       if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
-      else console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
+      else { console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable); Memory._crisisHarvester = false; }
       return;
     }
   }
