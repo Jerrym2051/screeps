@@ -374,14 +374,24 @@ function manageSpawns(room) {
       // Near-death only & too broke to replace yet: let the living FUNCTIONAL
       // harvester keep collecting so a replacement can be afforded next tick.
     } else {
-      // Spawn a replacement from whatever energy is banked. No energy gate: the
-      // extensions are now being filled by the harvesters themselves (top-off on a
-      // full spawn), so the pool climbs to energyCapacityAvailable (550 here) and
-      // buildBody scales this body UP to 2-WORK (work,work,carry,move @ 300) instead
-      // of carry-trip 1-WORK at 200. (functionalHarvesterCount === 0 stays the
-      // true crisis path, still allowed at prodCost 200 via the branch above.)
-      let body = buildBody('harvester', room.energyAvailable);
-      if (!body.length) body = prodBody;
+       // Spawn a replacement from whatever energy is banked. No energy gate: the
+       // extensions are now being filled by the harvesters themselves (top-off on a
+       // full spawn), so the pool climbs to energyCapacityAvailable (550 here) and
+       // buildBody scales this body UP to 2-WORK (work,work,carry,move @ 300) instead
+       // of carry-trip 1-WORK at 200. (functionalHarvesterCount === 0 stays the
+       // true crisis path, still allowed on a 1-WORK emergency prodBody below.)
+       let body = buildBody('harvester', room.energyAvailable);
+       if (!body.length) body = prodBody;
+       // Don't spend a 200-290 bank on a 1-WORK emergency when we still have
+       // functional harvesters: the 1-WORK body just perpetuates carry-trip income
+       // (~0.9/tick) and the ~220 spawn cost resets the bank to ~30 every cycle,
+       // preventing it from ever reaching 290 for a real 2-WORK body. Wait until
+       // the pool can fund >=2 WORK, which materially lifts income and stops the
+       // crash-recycle thrash. The live harvester keeps collecting meanwhile.
+       const workCount = body.filter(p => p === WORK).length;
+       if (workCount < 2 && functionalHarvesterCount > 0) {
+         return;
+       }
       const memory = { role: 'harvester' };
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;
