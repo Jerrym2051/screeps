@@ -342,8 +342,9 @@ function reportStatus(room) {
      ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
      ' TGT h' + (targets.harvester || 0) + ' ha' + (targets.hauler || 0) + ' u' + (targets.upgrader || 0) + ' b' + (targets.builder || 0) + ' l' + (targets.looter || 0) +
      ' hlr(' + (counts.hauler || 0) + 'x' + roomCreeps.filter(cr=>cr.memory.role==='hauler').reduce((n,cr)=>n+cr.store.getUsedCapacity(RESOURCE_ENERGY),0) + ') ' +
-     'upg(' + (counts.upgrader || 0) + ') ' +
-     ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
+      'upg(' + (counts.upgrader || 0) + ') ' +
+      ' V=2' +
+      ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
      ' spawn ' + spawning);
 }
 
@@ -447,6 +448,23 @@ function manageSpawns(room) {
       if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
       else { console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable); Memory._crisisHarvester = false; }
       return;
+    }
+  }
+
+  // Surplus looter reclamation: the looter ONLY spawns when dropped>=500, so any
+  // live looter while targets.looter is 0 (nothing on the ground) is a pure upkeep
+  // drain — and worse, on the old idle-fallback it would steal spawn energy.
+  // Recycle the one nearest end-of-life so its body energy returns to the pool.
+  // Gated on !targets.looter so we never kill a collector mid-pickup.
+  if (!targets.looter && typeof s.recycleCreep === 'function') {
+    const looters = Object.values(Game.creeps)
+      .filter(c => c.memory.role === 'looter' && c.room.name === room.name && c.body.length >= 2);
+    if (looters.length) {
+      const victim = looters.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+      if (s.recycleCreep(victim) === OK) {
+        console.log('Recycled idle looter', victim.name, 'no drops (target 0), energy', room.energyAvailable);
+        return;
+      }
     }
   }
 
