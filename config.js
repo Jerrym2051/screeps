@@ -331,6 +331,7 @@ function reportStatus(room) {
   console.log('[STATUS ' + room.name + ' t=' + Game.time + ' rcl' +
     (room.controller ? room.controller.level : 0) + ' ' + stage + '] ' +
     'energy ' + room.energyAvailable + '/' + room.energyCapacityAvailable +
+     ' prog ' + (room.controller && room.controller.progressTotal ? room.controller.progress + '/' + room.controller.progressTotal : '-') +
     ' creeps ' + roomCreeps.length +
     ' deficit ' + (deficit.length ? deficit.join(',') : 'none') +
     ' dropped ' + dropped +
