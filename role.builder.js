@@ -2,9 +2,12 @@
 module.exports = function (creep) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
-  // Prioritize the source container: building it unlocks the harvester->container->
-  // hauler loop that delivers the source's full ~10/tick (vs ~1/tick per carry-trip).
-  // If a container site is still unbuilt at a known source containerPos, build it first.
+  const lvl = c ? c.level : 0;
+
+  // Target priority: the source container stored in memory (the income unlock
+  // that unblocks harvesters->container->hauler), then the closest non-rampart
+  // site (ramparts are a pure drain below RCL3, so skip them pre-RCL3 and
+  // upgrade the controller instead).
   let site = null;
   const mem = Memory.rooms?.[creep.room.name]?.sources;
   if (mem) {
@@ -16,35 +19,52 @@ module.exports = function (creep) {
     }
   }
   if (!site) {
-    // Skip rampart sites below RCL3 (3000 build cost each = pure drain with no
-    // defense value yet). With no productive site left, fall through to upgrade
-    // the controller instead of camping a rampart.
-    const lvl = creep.room.controller ? creep.room.controller.level : 0;
     const sites = creep.room.find(FIND_CONSTRUCTION_SITES, {
       filter: s => lvl >= 3 || s.structureType !== STRUCTURE_RAMPART });
     if (sites.length) site = creep.pos.findClosestByPath(sites);
   }
-  if (creep.store.getFreeCapacity(RESOURCE_ENERGY) >= 45) {
-    // Refill only when nearly EMPTY so we put ALL energy to work first (build ~45
-    // ticks per trip) instead of topping off 1 energy after every build and camping
-    // the spawn tiles (which blocks harvesters' drop-off route). Pull the spawn's
-    // FULL available amount in one withdrawal (min(freeCarry, available)); only mine
-    // the source when the spawn is empty. One withdrawal then leave to build.
-    // Withdraw from a filled source container, else a filled extension (the energy
-    // pool the harvesters are topping off), else the spawn, else mine the source.
-    const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
-      filter: s => (s.structureType === STRUCTURE_CONTAINER || s.structureType === STRUCTURE_EXTENSION) && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
-    if (cont) {
-      if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont);
-    } else if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
-      if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
-    } else {
-      const src = creep.pos.findClosestByRange(FIND_SOURCES);
-      if (src && creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
+
+  const used = creep.store.getUsedCapacity(RESOURCE_ENERGY);
+  const free = creep.store.getFreeCapacity(RESOURCE_ENERGY);
+
+  // Empty — need energy. If the target site is at a source (the container
+  // always is), harvest the source IN PLACE: that's an instant local refill
+  // (no long carry-trip from the spawn), which is what makes the pre-container
+  // build actually finish instead of stalling at 0 progress. Otherwise pull from
+  // the nearest container/extension and fall back to the spawn.
+  if (used === 0) {
+    const nearSrc = site ? site.pos.findInRange(FIND_SOURCES, 4)[0] : null;
+    if (nearSrc) {
+      if (creep.harvest(nearSrc) === ERR_NOT_IN_RANGE) creep.moveTo(nearSrc, { reusePath: 5 });
+      return;
     }
-  } else if (!site) {
-    if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
-  } else if (creep.build(site) === ERR_NOT_IN_RANGE) {
+    const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
+      filter: s => (s.structureType === STRUCTURE_CONTAINER || s.structureType === STRUCTURE_EXTENSION) &&
+        s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
+    if (cont) {
+      if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont, { reusePath: 5 });
+      return;
+    }
+    if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
+      if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn, { reusePath: 5 });
+      return;
+    }
+    // No nearby energy — just get into position at the site.
+    if (site) {
+      if (creep.build(site) === ERR_NOT_IN_RANGE) creep.moveTo(site, { reusePath: 5 });
+    } else if (c) {
+      if (creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c, { reusePath: 5 });
+    }
+    return;
+  }
+
+  // Has energy — build the target site if in range, else move toward it.
+  if (site) {
+    if (creep.build(site) !== ERR_NOT_IN_RANGE) return;
     creep.moveTo(site, { reusePath: 5 });
+  } else if (c) {
+    // Nothing productive to build — dump spare energy into the controller.
+    if (creep.upgradeController(c) !== ERR_NOT_IN_RANGE) return;
+    creep.moveTo(c, { reusePath: 5 });
   }
 };
