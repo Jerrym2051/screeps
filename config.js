@@ -194,12 +194,18 @@ function getTargets(room) {
     // bank can fund them. Builder (container/income) is priority 5 — above the
     // upgrader — so the income unlock completes before the upgrader drains the
     // bank. One builder pre-container (minimal drain), two once the source
-    // container is filled (hauler unlock imminent). 1 upgrader always
-    // (anti-downgrade), +1 at bank>=400, +1 at >=500, capped at 3 above.
-    targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0)
-      + (controller && controller.level < 3 && room.energyAvailable >= 400 ? 1 : 0)
-      + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0);
-    targets.builder = filled > 0 ? 2 : 1;
+    // container is filled (hauler unlock imminent). Upgrader is withheld until
+    // the container is built: a 1-WORK upgrader drains ~1/tick against only
+    // ~1.6/tick carry-trip income, which collapses the pre-container bank and
+    // starves the builder mid-build. Once the container exists the harvesters
+    // dump at the source and income jumps, so the upgrader is affordable again.
+    const haveContainer = filled > 0;
+    targets.upgrader = haveContainer
+      ? (1 + (controller && controller.level < 2 ? 2 : 0)
+          + (controller && controller.level < 3 && room.energyAvailable >= 400 ? 1 : 0)
+          + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0))
+      : 0;
+    targets.builder = haveContainer ? 2 : 1;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = 0;
@@ -417,12 +423,25 @@ function manageSpawns(room) {
     // finished and income stayed carry-limited (~5/tick). Redundant anyway:
     // ROLE_PRIORITY already spawns the upgrader (5) before any builder (30),
     // so harvester income funds the upgrader first without killing builders.
-    // (c) Bootstrap income: break the income==drain equilibrium by shedding a
-    // surplus BUILDER (a drain role) to bank for the next harvester (the income
-    // role) while a harvester deficit exists. Keeps >=1 builder; once harvesters
-    // saturate the source the deficit closes and the spawn loop rebuilds builders.
-    // Without this the room sits at income==drain (~3/tick here) and never banks the
-    // ~300 needed to add a harvester -> the container/hauler unlock never arrives.
+    // (c) Bootstrap income: pre-container the UPGRADER is the drain that must go
+    //     (a 1-WORK upgrader consumes ~1/tick vs ~1.6/tick carry-trip income, so it
+    //     collapses the bank and starves the container builder mid-build). Shed the
+    //     upgrader — NOT the builder — to stop the bleed; the builder is the income
+    //     unlock and must survive to finish the container. Once a container exists,
+    //     harvesters dump at the source, income jumps, and the upgrader respawns.
+    if (controller && controller.level < 3 && (filled || 0) === 0 && (counts.upgrader || 0) > 0) {
+      const upgs = Object.values(Game.creeps)
+        .filter(c => c.memory.role === 'upgrader' && c.room.name === room.name && c.body.length >= 2);
+      if (upgs.length) {
+        const victim = upgs.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+        if (s.recycleCreep(victim) === OK) {
+          console.log('Bootstrap: recycled upgrader', victim.name, 'pre-container to stop drain, energy', room.energyAvailable);
+          return;
+        }
+      }
+    }
+    // (d) Post-container: shed a surplus builder (only if >1) to bank the next
+    //     harvester while a deficit exists. Keeps >=1 builder.
     if (controller && controller.level < 3 && (targets.harvester || 0) > (counts.harvester || 0) && (counts.builder || 0) > 1) {
       const blds = Object.values(Game.creeps)
         .filter(c => c.memory.role === 'builder' && c.room.name === room.name && c.body.length >= 2);
