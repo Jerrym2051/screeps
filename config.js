@@ -215,10 +215,11 @@ function getTargets(room) {
     // starves the builder mid-build. Once the container exists the harvesters
     // dump at the source and income jumps, so the upgrader is affordable again.
     const haveContainer = filled > 0;
-    // Updaters: 3 at RCL2 (rush RCL3) and 2 at RCL3+. The bank-gated formula caused
-    // churn (target 3 at 550, 1 at 300) which cycled the creeps. Once a container
-    // exists the bank is fed from it, so a fixed count holds.
-    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 3 : 2) : 0;
+    // Updaters: 5 at RCL2 (rush RCL3 — the bank is capped at 550 and harvesters
+    // overflow into containers, so the surplus income is best spent on the
+    // controller), 2 at RCL3+ (where expansion/defence competes for energy). The
+    // old bank-gated formula churned (3 at 550 -> 1 at 300) and culled upgraders.
+    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 5 : 2) : 0;
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
