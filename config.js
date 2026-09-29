@@ -293,10 +293,11 @@ function reportStatus(room) {
   }
   const dropped = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
   const sites = room.find(FIND_CONSTRUCTION_SITES).length;
-  const contStruct = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
+  const contStruct = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER });
   const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER });
   const contProg = contSites.length ? Math.max(...contSites.map(s => s.progress)) : 0;
   const sources = room.find(FIND_SOURCES);
+  if (Game.time % 50 === 0) console.log('[DIAG] contStruct=' + contStruct.length + ' sites=' + sites + ' myStructs=' + room.find(FIND_MY_STRUCTURES).map(s => s.structureType).join(',') + ' allCont=' + room.find(FIND_STRUCTURES).filter(s => s.structureType === STRUCTURE_CONTAINER && s.room.name === room.name).length);
   const sp = room.find(FIND_MY_SPAWNS)[0];
   const spawning = sp && sp.spawning ? ('busy:' + (sp.spawning.name || 'creep')) : 'idle';
   const stage = getRoomStage(room);
@@ -307,7 +308,7 @@ function reportStatus(room) {
     ' deficit ' + (deficit.length ? deficit.join(',') : 'none') +
     ' dropped ' + dropped +
     ' sites ' + sites +
-    ' cont ' + contStruct + '/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
+    ' cont ' + contStruct.length + '/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
     ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
     ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
     ' spawn ' + spawning);
