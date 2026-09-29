@@ -215,18 +215,14 @@ function getTargets(room) {
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
-    // Haulers are sized to the ACTUAL energy draw on the bank, not to how many
-    // containers are full — otherwise a momentarily-full source container spawns a
-    // stack of haulers that idle once it drains, wasting upkeep and spawn bandwidth.
-    // Demand = WORK-parts actively consuming energy (upgraders/builders/repairers
-    // each burn ~1 energy/WORK/tick) plus spawn headroom (~4/tick). One hauler lifts
-    // ~10 energy/tick (CARRY50 body, ~20-tick round trip at RCL2), clamped to 1..3.
-    const consumerWork = (Object.values(Game.creeps).filter(cr => cr.room && cr.room.name === room.name)).reduce((n, cr) => {
-      const r = cr.memory.role;
-      if (r === 'upgrader' || r === 'builder' || r === 'repairer') n += cr.body.filter(p => p === WORK).length;
-      return n;
-    }, 0);
-    targets.hauler = filled > 0 ? Math.min(3, Math.max(1, Math.ceil((consumerWork + 4) / 10))) : 0;
+    // Haulers are sized to the energy flowing INTO the containers (the harvest rate),
+    // not to the energy flowing OUT (consumer drain) — otherwise a momentarily-full
+    // source container spawns a stack of haulers that idle once it drains, OR too few
+    // haulers are built and the containers stay full while harvesters overflow into
+    // dropped energy. Harvest = ~2 energy/WORK/tick, and one hauler (c.50 carry,
+    // ~10-tick round trip) lifts ~5/tick, so one hauler per ~5 WORK-harvest.
+    const harvesterWork = (Object.values(Game.creeps).filter(cr => cr.room && cr.room.name === room.name).reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p === WORK).length : 0), 0));
+    targets.hauler = filled > 0 ? Math.min(3, Math.max(1, Math.ceil(harvesterWork * 2 / 5))) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     // Reclaim dropped energy: once a container exists (free bank boost), OR while
     // pre-container if harvesters are overflowing (pool swings) and a big pile is
