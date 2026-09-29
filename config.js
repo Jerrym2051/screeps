@@ -378,7 +378,7 @@ function manageSpawns(room) {
   // Built source containers (the income unlock). `filled` from getTargets is not in
   // this scope, so compute the container count here (a built container, even empty,
   // means harvesters can dump at the source and the upgrader is affordable again).
-  const contStruct = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
+  const contStruct = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).length;
 
    // Harvester crisis recovery (prevents the energy-death deadlock):
   //  - Proactive: a FUNCTIONAL harvester nearing end-of-life -> spawn its
