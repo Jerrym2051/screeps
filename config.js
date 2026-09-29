@@ -462,6 +462,13 @@ function manageSpawns(room) {
   // Try to spawn the highest-priority role that can afford a body
   for (const { role } of candidates) {
     if (role === 'claimer' && room.energyAvailable < 350) continue;
+    // Hold the pool on a STRONG (2-WORK) body for the income/drain roles. Spawning
+    // a 1-WORK body at ~210 just drains the bank back to ~0 every tick, so the room
+    // sits at ~1/tick carry-trip income forever and the 2000-hit source container
+    // (the hauler/income unlock) never finishes. Letting the pool climb to the
+    // 2-WORK threshold first pays for itself within minutes.
+    if (role === 'harvester' && room.energyAvailable < 300) continue; // 2W: work,work,carry,move (300)
+    if (role === 'builder' && room.energyAvailable < 410) continue;   // 2W builder body (410)
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
     // Pick best source for harvesters
