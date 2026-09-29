@@ -22,8 +22,10 @@ module.exports = function (creep) {
     // the spawn tiles (which blocks harvesters' drop-off route). Pull the spawn's
     // FULL available amount in one withdrawal (min(freeCarry, available)); only mine
     // the source when the spawn is empty. One withdrawal then leave to build.
+    // Withdraw from a filled source container, else a filled extension (the energy
+    // pool the harvesters are topping off), else the spawn, else mine the source.
     const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
+      filter: s => (s.structureType === STRUCTURE_CONTAINER || s.structureType === STRUCTURE_EXTENSION) && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
     if (cont) {
       if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont);
     } else if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
@@ -32,27 +34,9 @@ module.exports = function (creep) {
       const src = creep.pos.findClosestByRange(FIND_SOURCES);
       if (src && creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
     }
-  } else {
-    // Bootstrap extension top-off: while no source container is built there is no
-    // hauler, so a builder keeps the 5 extensions fed. That lifts energyAvailable
-    // to energyCapacityAvailable (550) so the next builder is a 2-WORK body
-    // (cost 410) — a 1-WORK builder needs ~2000 ticks for the 2000-hit container,
-    // a 2-WORK one ~500. Once a container exists the hauler owns extension-filling.
-    const haveContainer = !!creep.room.find(FIND_MY_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
-    if (!haveContainer) {
-      const ext = creep.pos.findInRange(FIND_MY_STRUCTURES, 3, {
-        filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-      })[0];
-      if (ext) {
-        if (creep.transfer(ext, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(ext);
-        return;
-      }
-    }
-    if (!site) {
-      if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
-    } else if (creep.build(site) === ERR_NOT_IN_RANGE) {
-      creep.moveTo(site, { reusePath: 5 });
-    }
+  } else if (!site) {
+    if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
+  } else if (creep.build(site) === ERR_NOT_IN_RANGE) {
+    creep.moveTo(site, { reusePath: 5 });
   }
 };

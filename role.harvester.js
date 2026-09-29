@@ -65,21 +65,17 @@ function findDumpTarget(creep, source) {
       filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 })[0];
     if (storage) return storage;
   }
-  // 5) spawn if it has free capacity (immediate pool for the next spawn)
+  // 5) empty EXTENSION — fill the energy pool (energyAvailable = spawn + extensions)
+  //    so it climbs to 550 and bodies scale to 2-WORK. Pre-container the harvesters
+  //    are the only energy source, and the spawn drains fast (builders withdraw it),
+  //    so the spawn rarely reaches its 300 cap and the 5 extensions never fill via
+  //    overflow. So dump straight into the nearest empty extension instead.
+  const ext = creep.room.find(FIND_MY_STRUCTURES, {
+    filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+  if (ext.length) return creep.pos.findClosestByRange(ext);
+  // 6) spawn (if it has room)
   if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
-  // 6) spawn is full (hit its 300 cap) — feed an EMPTY EXTENSION so the energy stays
-  //    in the room's pool (energyAvailable = spawn + extensions) and reaches
-  //    energyCapacityAvailable (550 here) instead of dropping on the ground. No
-  //    creep currently fills extensions (no hauler until the source container exists),
-  //    so the harvesters do it: every full dump that would otherwise spill at the
-  //    spawn instead tops off an extension. Once the container + hauler exist the
-  //    hauler owns this.
-  const ext = creep.pos.findInRange(FIND_MY_STRUCTURES, 6, {
-    filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-  })[0];
-  if (ext) return ext;
-  // 7) last resort (spawn full, no empty extension in range) — returns spawn;
-  //    the transfer fails and energy drops, but only once every extension is full.
+  // 7) fallback (everything full — only spills once the pool is saturated)
   return spawn;
 }
 
