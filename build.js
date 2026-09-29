@@ -97,7 +97,10 @@ function placeExtensions(room) {
 
 function placeRoads(room) {
   const spawn = room.find(FIND_MY_SPAWNS)[0];
-  if (!spawn) return;
+  // Only build roads once energy starvation is over (the pool holds a real surplus).
+  // Road sites are cheap to place but EXPENSIVE to build (500 hits each) and compete
+  // with the container/builder RCL push, so keep this gated until income is healthy.
+  if (!spawn || room.energyAvailable < 300) return;
   const targets = room.find(FIND_SOURCES).concat(room.controller ? [room.controller] : []);
   for (const t of targets) {
     const path = PathFinder.search(spawn.pos, t.pos, { swampCost: 1 }).path;
@@ -221,6 +224,7 @@ function buildPlan(room) {
     if (Game.time % 50 === 0) console.log('buildPlan for', room.name, 'sources:', room.find(FIND_SOURCES).length, 'sites:', room.find(FIND_CONSTRUCTION_SITES).length, 'memory sources:', Object.keys(Memory.rooms[room.name].sources).length);
     placeExtensions(room);
     placeContainers(room);
+    placeRoads(room);
     placeRamparts(room);
     placeTowers(room);
     placeStorage(room);
