@@ -265,7 +265,7 @@ function getTargets(room) {
     // hold the room; remote harvesters are sent later once it is ours.
     const eastRoom = eastNeighbor(room.name);
     let expansionTarget = null;
-    if (eastRoom && room.energyAvailable >= 400) {
+    if (eastRoom && room.energyAvailable >= 500) {
       const er = Game.rooms[eastRoom];
       const alreadyClaimed = !!(er && er.controller && er.controller.my);
       const inTransit = Object.values(Game.creeps)
@@ -647,7 +647,10 @@ function manageSpawns(room) {
 
   // Try to spawn the highest-priority role that can afford a body
   for (const { role } of candidates) {
-    if (role === 'claimer' && room.energyAvailable < 350) continue;
+     if (role === 'claimer') {
+       const cb = buildBody('claimer', room.energyAvailable);
+       if (cb.length === 0 || bodyCost(cb) > room.energyAvailable) continue;
+     }
     // No energy gates on income/drain roles: buildBody already returns [] below
     // prodCost (200) for harvesters/builders, so they only spawn when affordable.
     // With the extensions being filled the pool climbs to 550, so buildBody scales
