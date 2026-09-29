@@ -3,12 +3,14 @@ const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','
 // Threat-model priority: 0 = highest, 100 = lowest. Lower = spawn first.
 const ROLE_PRIORITY = {
   harvester:  0,  // energy foundation — always first
+  hauler:     4,  // logistics — must establish BEFORE builder/upgrader drain the
+                  // bank during the container cold-start (upgrader/builder pull from
+                  // the spawn, so a late hauler starves and the bank can't recover)
   builder:    5,  // container/income unlock — must beat the upgrader pre-RCL3
   upgrader:   6,  // permanent RCL/GCL climb (1 held for the downgrade timer)
   claimer:   10,  // claim new rooms
   defender:  15,  // room defense
   repairer:  20,  // ramparts/walls/roads
-  hauler:    25,  // logistics — only useful with containers
   attacker:  40,  // offense
   looter:    50,  // pickup drops
   miner:     60,  // RCL 6+ minerals
@@ -218,9 +220,12 @@ function getTargets(room) {
     // Reclaim dropped energy: once a container exists (free bank boost), OR while
     // pre-container if harvesters are overflowing (pool swings) and a big pile is
     // decaying — recycling that waste beats letting it rot. Gate on pile size so a
-    // lone 10-unit drop doesn't pull a creep off productive work.
+    // lone 10-unit drop doesn't pull a creep off productive work. Scale the worker
+    // count with the pile so a big spill (e.g. energy a removed construction site
+    // released from a withheld builder) is reclaimed before it stalls the economy.
     const droppedAmt = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
-    targets.looter = ((filled > 0 || droppedAmt >= 200) && droppedAmt > 0) ? 1 : 0;
+    targets.looter = ((filled > 0 || droppedAmt >= 200) && droppedAmt > 0)
+      ? Math.min(3, Math.ceil(droppedAmt / 500)) : 0;
     const minerals = room.find(FIND_MINERALS);
     targets.miner = 0;
     if (minerals.length) {
