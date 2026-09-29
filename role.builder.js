@@ -27,17 +27,12 @@ module.exports = function (creep) {
   const used = creep.store.getUsedCapacity(RESOURCE_ENERGY);
   const free = creep.store.getFreeCapacity(RESOURCE_ENERGY);
 
-  // Empty — need energy. If the target site is at a source (the container
-  // always is), harvest the source IN PLACE: that's an instant local refill
-  // (no long carry-trip from the spawn), which is what makes the pre-container
-  // build actually finish instead of stalling at 0 progress. Otherwise pull from
-  // the nearest container/extension and fall back to the spawn.
+  // Empty — need energy. Withdraw from the nearest container/extension that has
+  // energy (reliable pool), then the spawn, then mine the source. Harvesting the
+  // source in-place is only a last resort: with 5 harvesters already saturating a
+  // 10/tick source, a local harvest yields nothing and the builder stalls with an
+  // empty store (the container never builds). Extensions/spawn have energy for real.
   if (used === 0) {
-    const nearSrc = site ? site.pos.findInRange(FIND_SOURCES, 4)[0] : null;
-    if (nearSrc) {
-      if (creep.harvest(nearSrc) === ERR_NOT_IN_RANGE) creep.moveTo(nearSrc, { reusePath: 5 });
-      return;
-    }
     const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
       filter: s => (s.structureType === STRUCTURE_CONTAINER || s.structureType === STRUCTURE_EXTENSION) &&
         s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
@@ -49,7 +44,13 @@ module.exports = function (creep) {
       if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn, { reusePath: 5 });
       return;
     }
-    // No nearby energy — just get into position at the site.
+    // Nothing in the pool — mine the source at the site as a last resort.
+    const nearSrc = site ? site.pos.findInRange(FIND_SOURCES, 4)[0] : null;
+    if (nearSrc) {
+      if (creep.harvest(nearSrc) === ERR_NOT_IN_RANGE) creep.moveTo(nearSrc, { reusePath: 5 });
+      return;
+    }
+    // No energy anywhere — just get into position at the site.
     if (site) {
       if (creep.build(site) === ERR_NOT_IN_RANGE) creep.moveTo(site, { reusePath: 5 });
     } else if (c) {
