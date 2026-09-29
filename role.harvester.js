@@ -167,23 +167,30 @@ module.exports = function (creep) {
       else creep.moveTo(targetSource, { reusePath: 5 });
     }
   } else {
-    // Full — dump
+    // Full — dump.
     const dump = findDumpTarget(creep, source);
-    const res = creep.transfer(dump, RESOURCE_ENERGY);
-    if (res === ERR_NOT_IN_RANGE) {
-      creep.moveTo(dump);
-    } else if (res !== OK && dump !== spawn) {
-      // Try alternative dump or go to spawn
-      const altDump = findDumpTarget(creep, source);
-      if (altDump !== dump) {
-        creep.moveTo(altDump);
-      } else if (spawn) {
-        creep.moveTo(spawn, { reusePath: 3 });
+    if (dump && dump.structureType === STRUCTURE_CONTAINER) {
+      const res = creep.transfer(dump, RESOURCE_ENERGY);
+      if (res === ERR_NOT_IN_RANGE) {
+        // Move toward the container but stay staged near the source so we don't
+        // cross the whole room to the spawn on every full cycle.
+        creep.moveTo(dump, { reusePath: 5 });
       }
-    } else if (res !== OK && dump === spawn) {
-      // Spawn blocked — try to find another target or upgrade
-      if (c && creep.pos.getRangeTo(c) <= 3) {
-        creep.upgradeController(c);
+    } else if (dump === spawn) {
+      // Cold-start fallback: top the bank directly so the spawn can build a hauler.
+      const res = creep.transfer(spawn, RESOURCE_ENERGY);
+      if (res === ERR_NOT_IN_RANGE) {
+        if (c && creep.pos.getRangeTo(c) <= 3) creep.upgradeController(c);
+        else creep.moveTo(spawn, { reusePath: 3 });
+      }
+    } else {
+      // Containers are full AND a hauler is running: the bank is being fed from the
+      // container, so DON'T walk all the way to the spawn. Idle on a free tile next
+      // to the source (by the containers) so the moment a hauler frees space we dump
+      // immediately instead of having to walk the source->spawn corridor.
+      const wait = findWaitTile(creep, source);
+      if (wait) {
+        if (creep.pos.getRangeTo(wait) > 1) creep.moveTo(wait, { reusePath: 5 });
       } else if (spawn) {
         creep.moveTo(spawn, { reusePath: 3 });
       }

@@ -12,7 +12,9 @@ module.exports = function (creep) {
     });
     if (full.length) {
       const best = full.reduce((a, b) => a.store.getUsedCapacity(RESOURCE_ENERGY) >= b.store.getUsedCapacity(RESOURCE_ENERGY) ? a : b);
-      if (creep.withdraw(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
+      const r = creep.withdraw(best, RESOURCE_ENERGY);
+      if (r === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
+      else if (r !== OK && Game.time % 50 === 0) console.log('HAULER ' + creep.name + ' withdraw err=' + r + ' tgt=' + best.pos.x + ',' + best.pos.y + ' my=' + best.my + ' owner=' + best.owner + ' used=' + best.store.getUsedCapacity(RESOURCE_ENERGY));
       found = true;
     }
     if (!found) {
