@@ -332,9 +332,11 @@ function reportStatus(room) {
     ' dropped ' + dropped +
     ' sites ' + sites +
     ' cont ' + contStruct.length + 'u/' + contFilled + 'f/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
-    ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
-    ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
-    ' spawn ' + spawning);
+     ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
+     ' hlr(' + (counts.hauler || 0) + 'x' + roomCreeps.filter(cr=>cr.memory.role==='hauler').reduce((n,cr)=>n+cr.store.getUsedCapacity(RESOURCE_ENERGY),0) + ') ' +
+     'upg(' + (counts.upgrader || 0) + ') ' +
+     ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
+     ' spawn ' + spawning);
 }
 
 function manageSpawns(room) {
