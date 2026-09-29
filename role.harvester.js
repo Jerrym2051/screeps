@@ -34,26 +34,38 @@ function findRemoteSource(creep) {
   return null;
 }
 
-// Find the best dump target for a full harvester
+// Find the best dump target for a full harvester. Prefer the source's container
+// (shortest trip), but match ANY built container in the room — not only
+// Memory.sources.containerPos — so a stale/mismatched memory entry (which
+// happened with the duplicate-container sites) doesn't strand energy at the spawn
+// and starve the `filled > 0` hauler gate.
 function findDumpTarget(creep, source) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
-  
-  // Priority 1: source container (if exists and has space)
+  // 1) source's own container (by memory), verified to actually exist + have space
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {
     const pos = new RoomPosition(mem.x, mem.y, mem.roomName);
     const site = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER);
     if (site && site.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return site;
   }
-  // Priority 2: storage (RCL 4+)
+  // 2) any container adjacent to the source (the real source container)
+  if (source) {
+    const near = source.pos.findInRange(FIND_MY_STRUCTURES, 3, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (near.length) return near[0];
+  }
+  // 3) any container in the room (closest)
+  const any = creep.room.find(FIND_MY_STRUCTURES, {
+    filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+  if (any.length) return creep.pos.findClosestByRange(any);
+  // 4) storage (RCL 4+)
   if (c && c.level >= 4) {
     const storage = creep.room.find(FIND_MY_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-    })[0];
+      filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 })[0];
     if (storage) return storage;
   }
-  // Priority 3: spawn
+  // 5) spawn fallback
   return spawn;
 }
 
