@@ -42,6 +42,24 @@ function findRemoteSource(creep) {
 function findDumpTarget(creep, source) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
+  // COLD-START GUARD: once harvesters dump into the source container instead of
+  // the spawn/extensions, the bank is refilled ONLY by a hauler. If the hauler
+  // doesn't exist yet (or the bank is near-empty), the pool drains to 0 and the
+  // spawn can't even make a hauler — a death spiral. So while no hauler is alive
+  // OR energyAvailable is < 150, top the bank FIRST; once a hauler is present and
+  // the bank is healthy, dump into the container (the hauler then feeds the bank).
+  const haulers = creep.room.find(FIND_MY_CREEPS, {
+    filter: cr => cr.memory && cr.memory.role === 'hauler'
+  });
+  const bankDeficit = (creep.room.energyCapacityAvailable - creep.room.energyAvailable) > 0;
+  if (haulers.length === 0 || creep.room.energyAvailable < 150) {
+    if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
+    const ext = creep.room.find(FIND_MY_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (ext.length) return creep.pos.findClosestByRange(ext);
+    if (spawn) return spawn; // bank full (or spawn is the only sink) — fall back
+  }
+  void bankDeficit;
   // 1) source's own container (by memory), verified to actually exist + have space
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {

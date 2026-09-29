@@ -27,17 +27,23 @@ module.exports = function (creep) {
   const used = creep.store.getUsedCapacity(RESOURCE_ENERGY);
   const free = creep.store.getFreeCapacity(RESOURCE_ENERGY);
 
-  // Empty — need energy. Withdraw from the nearest container/extension that has
-  // energy (reliable pool), then the spawn, then mine the source. Harvesting the
-  // source in-place is only a last resort: with 5 harvesters already saturating a
-  // 10/tick source, a local harvest yields nothing and the builder stalls with an
-  // empty store (the container never builds). Extensions/spawn have energy for real.
+  // Empty — need energy. Withdraw from the nearest usable container (ours OR the
+  // ownerless ones this server lets us interact with — the source container can
+  // hold 2000, enough to keep the bank funded), then extensions, then the spawn,
+  // then mine the source. Withdrawing from the container (not the spawn) is what
+  // keeps spawn energy available to actually build a hauler during the cold-start.
   if (used === 0) {
-    const cont = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
-      filter: s => (s.structureType === STRUCTURE_CONTAINER || s.structureType === STRUCTURE_EXTENSION) &&
+    const cont = creep.pos.findClosestByRange(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
         s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
     if (cont) {
       if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont, { reusePath: 5 });
+      return;
+    }
+    const ext = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
+    if (ext) {
+      if (creep.withdraw(ext, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(ext, { reusePath: 5 });
       return;
     }
     if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
