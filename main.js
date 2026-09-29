@@ -82,12 +82,14 @@ module.exports.loop = function () {
     // Skip creep execution for rooms we cant see (can only manage memory/spawn planning)
     if (!isVisible) continue;
 
-    // 2a. run every live creep by its role (self-heal old nested-memory creeps)
+    // 2a. run every live creep by its role. One execution per creep per tick: run
+    // each creep only inside the room it is currently in, because this loop runs
+    // once per visible room (without this, every creep executes N times when N
+    // rooms are visible — critical once we expand into a second room).
     const spawn = Game.spawns['Spawn1'];
     for (const name in Game.creeps) {
       const creep = Game.creeps[name];
-      // Skip creeps that belong to other rooms (only manage home room creeps here)
-      // Actually, manage all creeps regardless - they are in this room
+      if (creep.room.name !== roomName) continue;
       if (!creep.memory.role && creep.memory.memory && creep.memory.memory.role) {
         creep.memory.role = creep.memory.memory.role;
         if (creep.memory.memory.sourceId) creep.memory.sourceId = creep.memory.memory.sourceId;
