@@ -311,8 +311,10 @@ function getTargets(room) {
   // delivers the source's full ~10/tick with far fewer carry-trips than harvesters
   // alone (a lone harvester moves only ~1/tick once travel is counted). Builders stay
   // affordable and spawn priority (harvester=0) still fills harvesters first — no collapse.
-  // Cap upgraders at 3 — they don't scale with room size
-  targets.upgrader = Math.min(targets.upgrader || 0, 3);
+  // Cap: rush 5 upgraders at RCL2 (income ~10/tick matches 5x2-WORK upgrade; the
+  // container buffer + healthy bank absorb spawn-cost dips), then 3 at RCL3+ once
+  // expansion/defence/compet builds draw on the pool.
+  targets.upgrader = Math.min(targets.upgrader || 0, (controller && controller.level < 3) ? 5 : 3);
   return targets;
 }
 
