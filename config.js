@@ -211,9 +211,12 @@ function getTargets(room) {
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
-    // Reclaim decaying dropped energy once a container exists (free bank boost);
-    // before that, looting competes with the harvester->spawn carry loop.
-    targets.looter = (filled > 0 && room.find(FIND_DROPPED_RESOURCES).length > 0) ? 1 : 0;
+    // Reclaim dropped energy: once a container exists (free bank boost), OR while
+    // pre-container if harvesters are overflowing (pool swings) and a big pile is
+    // decaying — recycling that waste beats letting it rot. Gate on pile size so a
+    // lone 10-unit drop doesn't pull a creep off productive work.
+    const droppedAmt = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
+    targets.looter = ((filled > 0 || droppedAmt >= 200) && droppedAmt > 0) ? 1 : 0;
     const minerals = room.find(FIND_MINERALS);
     targets.miner = 0;
     if (minerals.length) {
