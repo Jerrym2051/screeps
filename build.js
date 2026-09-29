@@ -96,6 +96,30 @@ function placeContainers(room) {
       }
     }
   }
+
+  // Overflow / bank buffer: the source container fills and harvesters then drop
+  // energy on the ground. Lay extra containers right beside the source (up to the
+  // room's container limit of 5) so harvesters have space to dump instead of
+  // overflowing — and as a one-time energy sink for the surplus. Only when the pool
+  // holds real surplus (>=400) so we never compete with the income unlock.
+  const contUsable = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).length;
+  const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
+  let totalCont = contUsable + contSites;
+  if (totalCont < 5 && room.energyAvailable >= 400) {
+    for (const src of sources) {
+      for (let r = 1; r <= 2 && totalCont < 5; r++) {
+        for (const pos of ring(src.pos, r)) {
+          if (totalCont >= 5) break;
+          if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
+          const t = room.getTerrain().get(pos.x, pos.y);
+          if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
+          if (makeSite(pos, STRUCTURE_CONTAINER, room) === OK) {
+            console.log('overflow container placed at', pos.x, pos.y, '(total', ++totalCont + '/5)');
+          }
+        }
+      }
+    }
+  }
 }
 
 function ring(center, r) {
@@ -135,7 +159,8 @@ function placeRoads(room) {
   // (500 hits each) and compete with the container RCL push, so keep this gated
   // until the pool holds a real surplus (>= 500), i.e. income is healthy.
   if (!spawn || room.energyAvailable < 500) return;
-  const targets = room.find(FIND_SOURCES).concat(room.controller ? [room.controller] : []);
+  const sources = room.find(FIND_SOURCES);
+  const targets = sources.concat(room.controller ? [room.controller] : []);
   for (const t of targets) {
     const path = PathFinder.search(spawn.pos, t.pos, { swampCost: 1 }).path;
     for (const step of path) {
@@ -143,6 +168,18 @@ function placeRoads(room) {
       if (room.getTerrain().get(pos.x, pos.y) !== TERRAIN_MASK_WALL) {
         makeSite(pos, STRUCTURE_ROAD, room);
       }
+    }
+  }
+  // Access roads: pave the spawn's and each source's 8 neighbours so creeps never
+  // trudge raw terrain to/from work — a cheap, sustained energy sink (300 build
+  // each) for surplus. Gated on the >=500 surplus rule above, so this only runs
+  // once income is healthy.
+  const ringCentres = [spawn.pos].concat(sources.map(s => s.pos));
+  for (const centre of ringCentres) {
+    for (const pos of ring(centre, 1)) {
+      if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
+      if (room.getTerrain().get(pos.x, pos.y) === TERRAIN_MASK_WALL) continue;
+      makeSite(pos, STRUCTURE_ROAD, room);
     }
   }
 }
