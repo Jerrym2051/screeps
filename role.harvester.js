@@ -65,7 +65,21 @@ function findDumpTarget(creep, source) {
       filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 })[0];
     if (storage) return storage;
   }
-  // 5) spawn fallback
+  // 5) spawn if it has free capacity (immediate pool for the next spawn)
+  if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
+  // 6) spawn is full (hit its 300 cap) — feed an EMPTY EXTENSION so the energy stays
+  //    in the room's pool (energyAvailable = spawn + extensions) and reaches
+  //    energyCapacityAvailable (550 here) instead of dropping on the ground. No
+  //    creep currently fills extensions (no hauler until the source container exists),
+  //    so the harvesters do it: every full dump that would otherwise spill at the
+  //    spawn instead tops off an extension. Once the container + hauler exist the
+  //    hauler owns this.
+  const ext = creep.pos.findInRange(FIND_MY_STRUCTURES, 6, {
+    filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+  })[0];
+  if (ext) return ext;
+  // 7) last resort (spawn full, no empty extension in range) — returns spawn;
+  //    the transfer fails and energy drops, but only once every extension is full.
   return spawn;
 }
 

@@ -358,16 +358,12 @@ function manageSpawns(room) {
       // Near-death only & too broke to replace yet: let the living FUNCTIONAL
       // harvester keep collecting so a replacement can be afforded next tick.
     } else {
-      // Near-death (re)placement only: insist on a 2-WORK body (>= 300). A 1-WORK
-      // harvester from the 200-289 budget farms ~1/tick — less than it costs the
-      // pool to spawn it once per death, so it is an income SINK that bleeds the
-      // bank. The living near-death harvester keeps collecting meanwhile; by the
-      // time the bank recovers to 300 the replacement is a 2-WORK (~8/tick) one.
-      // (functionalHarvesterCount === 0 is the TRUE crisis path, still allowed at
-      // prodCost 200 via the branch above.)
-      if (functionalHarvesterCount > 0 && room.energyAvailable < 300) return;
-      // Scale the replacement with current energy: banked energy -> a 2-WORK
-      // harvester (~2.5/tick) that sustains upgrader + builder.
+      // Spawn a replacement from whatever energy is banked. No energy gate: the
+      // extensions are now being filled by the harvesters themselves (top-off on a
+      // full spawn), so the pool climbs to energyCapacityAvailable (550 here) and
+      // buildBody scales this body UP to 2-WORK (work,work,carry,move @ 300) instead
+      // of carry-trip 1-WORK at 200. (functionalHarvesterCount === 0 stays the
+      // true crisis path, still allowed at prodCost 200 via the branch above.)
       let body = buildBody('harvester', room.energyAvailable);
       if (!body.length) body = prodBody;
       const memory = { role: 'harvester' };
@@ -462,12 +458,10 @@ function manageSpawns(room) {
   // Try to spawn the highest-priority role that can afford a body
   for (const { role } of candidates) {
     if (role === 'claimer' && room.energyAvailable < 350) continue;
-    // Spawn max energy is 300 at RCL2, so a 2-WORK harvester (work,work,carry,move
-    // = 300) is the best income body; hold the pool to 300 so we never waste it on
-    // a 1-WORK emergency harvester that farms ~1/tick and bleeds the bank. The
-    // builder is only ever 1-WORK at this capacity, so no extra gate (it spawns at
-    // >= 200 once the harvester deficit is closed).
-    if (role === 'harvester' && room.energyAvailable < 300) continue; // 2W: work,work,carry,move (300)
+    // No energy gates on income/drain roles: buildBody already returns [] below
+    // prodCost (200) for harvesters/builders, so they only spawn when affordable.
+    // With the extensions being filled the pool climbs to 550, so buildBody scales
+    // harvesters/builder up to 2-WORK automatically as energyAvailable rises.
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
     // Pick best source for harvesters
