@@ -120,7 +120,11 @@ function buildBody(role, budget) {
     while (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
     return b;
   }
-  const isWork = ['builder','miner','hauler'].includes(role);
+  // Haulers are pure logistics (carry+move, no WORK) — using the generic isWork path
+  // required budget>=200, so at a starved bank (<200) buildBody returned [] and no
+  // hauler ever spawned, leaving the source containers full and harvesters overflowing.
+  // A [CARRY,MOVE] pair spawns at bank 100 and scales to carry 250 at 500+.
+  const isWork = ['builder','miner'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
     while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
