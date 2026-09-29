@@ -230,7 +230,7 @@ function getTargets(room) {
     // overflow into containers, so the surplus income is best spent on the
     // controller), 2 at RCL3+ (where expansion/defence competes for energy). The
     // old bank-gated formula churned (3 at 550 -> 1 at 300) and culled upgraders.
-    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 5 : 2) : 0;
+    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 3 : 5) : 0;
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
@@ -311,10 +311,11 @@ function getTargets(room) {
   // delivers the source's full ~10/tick with far fewer carry-trips than harvesters
   // alone (a lone harvester moves only ~1/tick once travel is counted). Builders stay
   // affordable and spawn priority (harvester=0) still fills harvesters first — no collapse.
-  // Cap: rush 5 upgraders at RCL2 (income ~10/tick matches 5x2-WORK upgrade; the
-  // container buffer + healthy bank absorb spawn-cost dips), then 3 at RCL3+ once
-  // expansion/defence/compet builds draw on the pool.
-  targets.upgrader = Math.min(targets.upgrader || 0, (controller && controller.level < 3) ? 5 : 3);
+  // Cap: at RCL2 keep 3 upgraders so the ~4/tick income surplus can fund the
+  // container/road building (one source = 10/tick ceiling — u5 + building together
+  // would exceed it and drain the container buffer). At RCL3 the infrastructure is
+  // done, so rush 5 upgraders to finish RCL3/RCL4 (income matches 5x2-WORK upgrade).
+  targets.upgrader = Math.min(targets.upgrader || 0, (controller && controller.level < 3) ? 3 : 5);
   return targets;
 }
 
@@ -351,12 +352,11 @@ function reportStatus(room) {
     ' deficit ' + (deficit.length ? deficit.join(',') : 'none') +
     ' dropped ' + dropped +
     ' sites ' + sites +
-    ' cont ' + contStruct.length + 'u/' + contFilled + 'f/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
+    ' cont ' + contStruct.length + 'u/' + contFilled + 'f/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) + ' cE=' + contStruct.reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0) +
      ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
      ' TGT h' + (targets.harvester || 0) + ' ha' + (targets.hauler || 0) + ' u' + (targets.upgrader || 0) + ' b' + (targets.builder || 0) + ' l' + (targets.looter || 0) +
      ' hlr(' + (counts.hauler || 0) + 'x' + roomCreeps.filter(cr=>cr.memory.role==='hauler').reduce((n,cr)=>n+cr.store.getUsedCapacity(RESOURCE_ENERGY),0) + ') ' +
       'upg(' + (counts.upgrader || 0) + ') ' +
-      ' V=2' +
       ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
      ' spawn ' + spawning);
 }
