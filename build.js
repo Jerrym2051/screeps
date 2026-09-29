@@ -24,23 +24,41 @@ function placeContainers(room) {
   if (!Memory.rooms[room.name].sources) Memory.rooms[room.name].sources = {};
   for (const src of sources) {
     // (1) Once we've committed to a spot for a source (tracked in memory), NEVER
-    //     place a second container for it. The 2-tile room.find dedup below misses
-    //     sites on the 3rd ring, which is what spawned the duplicate containers
-    //     (one source got 3 sites) and starved the builders' focus.
-    const srcMem = Memory.rooms[room.name].sources[src.id];
-    if (srcMem && srcMem.containerPos) continue;
-    // (2) Safety net: skip if a container (structure or site) already exists near
-    //     the source.
+    //     place a second container for it — UNLESS the committed spot is stale
+    //     (no container structure AND no container site there). A stale entry was
+    //     the actual deadlock: placeContainers kept `continue`-ing on a memory
+    //     position that had no site, so the source container was never (re)built,
+    //     the builder fell through to rampart sites, and income stayed carry-limited.
+    const srcMem = Memory.rooms[room.name].sources[src.id] || (Memory.rooms[room.name].sources[src.id] = {});
+    if (srcMem.containerPos) {
+      const cp = srcMem.containerPos;
+      const pos = new RoomPosition(cp.x, cp.y, cp.roomName);
+      const hasStruct = pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_CONTAINER);
+      const hasSite = pos.lookFor(LOOK_CONSTRUCTION_SITES).length > 0;
+      if (hasStruct || hasSite) continue; // committed spot is real — leave it alone
+      if (Game.time < (srcMem.retryAt || 0)) continue; // rate-limit re-placement (no thrash)
+      srcMem.retryAt = Game.time + 200;
+      delete srcMem.containerPos; // stale — fall through and place a fresh one
+    }
+    // (2) Adopt any container that already exists near the source (structure or
+    //     site) into memory so the builder focuses on it instead of ramparts. This
+    //     also heals the old duplicate-container sites (one becomes the target).
     const nearContainers = room.find(FIND_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
-    if (nearContainers.length > 0) continue;
+    if (nearContainers.length > 0) {
+      srcMem.containerPos = { x: nearContainers[0].pos.x, y: nearContainers[0].pos.y, roomName: room.name };
+      continue;
+    }
     const nearSites = room.find(FIND_CONSTRUCTION_SITES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
-    if (nearSites.length > 0) continue;
+    if (nearSites.length > 0) {
+      srcMem.containerPos = { x: nearSites[0].pos.x, y: nearSites[0].pos.y, roomName: room.name };
+      continue;
+    }
 
     // Spiral outward from the source and place a container on the first
     // valid plain tile: not wall/swamp, not on the room edge (construction
@@ -125,11 +143,15 @@ function placeStorage(room) {
   }
 }
 
+// Ramparts are pure drain at RCL2 (3000 build cost each, no defense value yet).
+// Only plan them once RCL>=3 and the container+hauler loop is live, so they can
+// never starve the income unlock or clog the builder.
 function placeRamparts(room) {
   const spawn = room.find(FIND_MY_SPAWNS)[0];
   if (!spawn) return;
-  const targets = [spawn.pos];
   const c = room.controller;
+  if (!c || c.level < 3) return;
+  const targets = [spawn.pos];
   if (c && c.my) targets.push(c.pos);
   const mem = Memory.rooms?.[room.name]?.sources;
   if (mem) {

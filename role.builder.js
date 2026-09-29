@@ -15,7 +15,15 @@ module.exports = function (creep) {
       if (s) { site = s; break; }
     }
   }
-  if (!site) site = creep.pos.findClosestByPath(FIND_CONSTRUCTION_SITES);
+  if (!site) {
+    // Skip rampart sites below RCL3 (3000 build cost each = pure drain with no
+    // defense value yet). With no productive site left, fall through to upgrade
+    // the controller instead of camping a rampart.
+    const lvl = creep.room.controller ? creep.room.controller.level : 0;
+    const sites = creep.room.find(FIND_CONSTRUCTION_SITES, {
+      filter: s => lvl >= 3 || s.structureType !== STRUCTURE_RAMPART });
+    if (sites.length) site = creep.pos.findClosestByPath(sites);
+  }
   if (creep.store.getFreeCapacity(RESOURCE_ENERGY) >= 45) {
     // Refill only when nearly EMPTY so we put ALL energy to work first (build ~45
     // ticks per trip) instead of topping off 1 energy after every build and camping
