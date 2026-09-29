@@ -338,6 +338,7 @@ function reportStatus(room) {
     ' sites ' + sites +
     ' cont ' + contStruct.length + 'u/' + contFilled + 'f/' + contProg + '/' + (contSites.length ? contSites[0].progressTotal : 0) +
      ' harvesters ' + (counts.harvester || 0) + '/' + sources.length +
+     ' TGT h' + (targets.harvester || 0) + ' ha' + (targets.hauler || 0) + ' u' + (targets.upgrader || 0) + ' b' + (targets.builder || 0) + ' l' + (targets.looter || 0) +
      ' hlr(' + (counts.hauler || 0) + 'x' + roomCreeps.filter(cr=>cr.memory.role==='hauler').reduce((n,cr)=>n+cr.store.getUsedCapacity(RESOURCE_ENERGY),0) + ') ' +
      'upg(' + (counts.upgrader || 0) + ') ' +
      ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
