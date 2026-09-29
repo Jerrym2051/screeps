@@ -215,11 +215,10 @@ function getTargets(room) {
     // starves the builder mid-build. Once the container exists the harvesters
     // dump at the source and income jumps, so the upgrader is affordable again.
     const haveContainer = filled > 0;
-    targets.upgrader = haveContainer
-      ? (1 + (controller && controller.level < 2 ? 2 : 0)
-          + (controller && controller.level < 3 && room.energyAvailable >= 400 ? 1 : 0)
-          + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0))
-      : 0;
+    // Updaters: 3 at RCL2 (rush RCL3) and 2 at RCL3+. The bank-gated formula caused
+    // churn (target 3 at 550, 1 at 300) which cycled the creeps. Once a container
+    // exists the bank is fed from it, so a fixed count holds.
+    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 3 : 2) : 0;
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
@@ -230,7 +229,9 @@ function getTargets(room) {
     // dropped energy. Harvest = ~2 energy/WORK/tick, and one hauler (c.50 carry,
     // ~10-tick round trip) lifts ~5/tick, so one hauler per ~5 WORK-harvest.
     const harvesterWork = (Object.values(Game.creeps).filter(cr => cr.room && cr.room.name === room.name).reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p === WORK).length : 0), 0));
-    targets.hauler = filled > 0 ? Math.min(3, Math.max(1, Math.ceil(harvesterWork * 2 / 5))) : 0;
+    // Floor of 2: one source (~10/tick) needs 2 haulers to drain it even with small
+    // bodies; cap 3. Sized by live harvester WORK so it scales up as bodies grow.
+    targets.hauler = filled > 0 ? Math.min(3, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     // Reclaim dropped energy: once a container exists (free bank boost), OR while
     // pre-container if harvesters are overflowing (pool swings) and a big pile is
