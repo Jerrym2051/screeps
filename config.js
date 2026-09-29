@@ -3,12 +3,12 @@ const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','
 // Threat-model priority: 0 = highest, 100 = lowest. Lower = spawn first.
 const ROLE_PRIORITY = {
   harvester:  0,  // energy foundation — always first
-  upgrader:   5,  // permanent RCL/GCL climb
+  builder:    5,  // container/income unlock — must beat the upgrader pre-RCL3
+  upgrader:   6,  // permanent RCL/GCL climb (1 held for the downgrade timer)
   claimer:   10,  // claim new rooms
   defender:  15,  // room defense
   repairer:  20,  // ramparts/walls/roads
   hauler:    25,  // logistics — only useful with containers
-  builder:   30,  // construction
   attacker:  40,  // offense
   looter:    50,  // pickup drops
   miner:     60,  // RCL 6+ minerals
@@ -191,12 +191,15 @@ function getTargets(room) {
     // ticks) and push RCL. Scaled by surplus so they only take energy the
     // harvester+builder foundation isn't using: 1 always (anti-downgrade), +1 at
     // >=400 bank, +1 at >=500. The harvesters now dump into the 550 pool, so the
-    // bank can fund them. Builder (container/income) is priority 30, upgrader 5,
-    // so the income unlock still progresses on the bank between upgrades.
+    // bank can fund them. Builder (container/income) is priority 5 — above the
+    // upgrader — so the income unlock completes before the upgrader drains the
+    // bank. One builder pre-container (minimal drain), two once the source
+    // container is filled (hauler unlock imminent). 1 upgrader always
+    // (anti-downgrade), +1 at bank>=400, +1 at >=500, capped at 3 above.
     targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0)
       + (controller && controller.level < 3 && room.energyAvailable >= 400 ? 1 : 0)
       + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0);
-    targets.builder = 2;
+    targets.builder = filled > 0 ? 2 : 1;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = 0;
@@ -430,15 +433,21 @@ function manageSpawns(room) {
     }
   }
 
-  // Conserve: hold ALL spawns while starving, to protect RCL growth:
+  // Conserve: hold ALL spawns while starving, banking for the role the room needs
+  // next so a replaceable worker doesn't steal the energy meant for it:
   //  - a functional harvester nearing death that can't yet be replaced, or
-  //  - no upgrader and RCL<3 (no extensions -> tiny capacity -> stall): hold
-  //    until we can afford an upgrader body (250 -> need ~260 available), so
-  //    the banked energy isn't spent on a replaceable builder first.
+  //  - builder under target and bank<210 (bank for the container/income unlock
+  //    first — finishing it is what lifts the bank so 2-WORK bodies become
+  //    affordable), or
+  //  - once the builder is on the site, bank for the anti-downgrade upgrader
+  //    when RCL<3 (need ~260 available) so the banked energy isn't spent on a
+  //    second builder before the upgrader exists.
+  const BUILDER_BODY_COST = 200;
   const UPGRADER_BODY_COST = 250;
   if (
     (nearDeath && functionalHarvesterCount <= (targets.harvester || 0) && room.energyAvailable < prodCost) ||
-    ((counts.upgrader || 0) === 0 && controller && controller.level < 3 && room.energyAvailable < UPGRADER_BODY_COST + 10)
+    ((counts.builder || 0) < (targets.builder || 0) && room.energyAvailable < BUILDER_BODY_COST + 10) ||
+    ((counts.builder || 0) >= (targets.builder || 0) && (counts.upgrader || 0) === 0 && controller && controller.level < 3 && room.energyAvailable < UPGRADER_BODY_COST + 10)
   ) {
     return;
   }
