@@ -65,6 +65,34 @@ function spawnIsBlocked(creep) {
   return near.length >= 5;
 }
 
+// Pick a FREE, walkable tile adjacent to the source for a harvester to wait on
+// when the source is crowded. Keeps the source->spawn corridor (the tile a full
+// harvester uses to exit toward the spawn) clear, so a departing harvester isn't
+// blocked by harvesters queued to mine.
+function findWaitTile(creep, source) {
+  const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
+  const DIR_DELTA = { 1:[0,-1], 2:[1,-1], 3:[1,0], 4:[1,1], 5:[0,1], 6:[-1,1], 7:[-1,0], 8:[-1,-1] };
+  let exitX = -1, exitY = -1;
+  if (spawn) {
+    const d = source.pos.getDirectionTo(spawn.pos);
+    const dl = DIR_DELTA[d];
+    if (dl) { exitX = source.pos.x + dl[0]; exitY = source.pos.y + dl[1]; }
+  }
+  const adj = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+  const terrain = creep.room.getTerrain();
+  let best = null, bestDist = Infinity;
+  for (const [dx, dy] of adj) {
+    const x = source.pos.x + dx, y = source.pos.y + dy;
+    if (x < 1 || x > 48 || y < 1 || y > 48) continue;
+    if (x === exitX && y === exitY) continue;              // keep exit corridor clear
+    if (creep.room.lookForAt(LOOK_CREEPS, x, y).length) continue; // don't stack on another creep
+    if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;       // walkable only
+    const dist = Math.abs(x - creep.pos.x) + Math.abs(y - creep.pos.y);
+    if (dist < bestDist) { bestDist = dist; best = new RoomPosition(x, y, creep.room.name); }
+  }
+  return best;
+}
+
 module.exports = function (creep) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
@@ -91,9 +119,15 @@ module.exports = function (creep) {
   }
 
   if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-    // Harvesting
-    if (creep.harvest(targetSource) === ERR_NOT_IN_RANGE) {
-      creep.moveTo(targetSource, { reusePath: 5 });
+    // Harvesting. If we can't reach the source (the adjacent tiles are full / we
+    // got pushed off), park on a FREE tile NEXT to the source instead of roaming
+    // toward the spawn, and keep the source->spawn exit corridor clear so a full
+    // harvester can leave to dump without being blocked by waiting ones.
+    const h = creep.harvest(targetSource);
+    if (h === ERR_NOT_IN_RANGE) {
+      const wait = findWaitTile(creep, targetSource);
+      if (wait) creep.moveTo(wait, { reusePath: 5 });
+      else creep.moveTo(targetSource, { reusePath: 5 });
     }
   } else {
     // Full — dump

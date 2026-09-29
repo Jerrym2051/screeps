@@ -187,7 +187,7 @@ function getTargets(room) {
     const harvestersPerSource = Math.min(7, Math.max(4, Math.ceil(WORK_TO_SATURATE / workPerBody) + 3));
     targets.harvester = totalSources * harvestersPerSource
       + Math.max(0, containers.length - filled);
-    targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0);
+    targets.upgrader = 1 + (controller && controller.level < 2 ? 2 : 0) + (controller && controller.level < 3 && room.energyAvailable >= 300 ? 1 : 0) + (controller && controller.level < 3 && room.energyAvailable >= 500 ? 1 : 0);
     targets.builder = 2;
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
