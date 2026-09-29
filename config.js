@@ -365,7 +365,7 @@ function manageSpawns(room) {
       // time the bank recovers to 300 the replacement is a 2-WORK (~8/tick) one.
       // (functionalHarvesterCount === 0 is the TRUE crisis path, still allowed at
       // prodCost 200 via the branch above.)
-      if (functionalHarvesterCount > 0 && room.energyAvailable < 300) return;
+      if (functionalHarvesterCount > 0 && room.energyAvailable < 410) return;
       // Scale the replacement with current energy: banked energy -> a 2-WORK
       // harvester (~2.5/tick) that sustains upgrader + builder.
       let body = buildBody('harvester', room.energyAvailable);
@@ -467,7 +467,7 @@ function manageSpawns(room) {
     // sits at ~1/tick carry-trip income forever and the 2000-hit source container
     // (the hauler/income unlock) never finishes. Letting the pool climb to the
     // 2-WORK threshold first pays for itself within minutes.
-    if (role === 'harvester' && room.energyAvailable < 300) continue; // 2W: work,work,carry,move (300)
+    if (role === 'harvester' && room.energyAvailable < 410) continue; // 2W: work,work,carry,move (300) — gate 410 so the pool also clears the builder threshold
     if (role === 'builder' && room.energyAvailable < 410) continue;   // 2W builder body (410)
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
