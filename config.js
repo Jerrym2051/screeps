@@ -99,6 +99,17 @@ function buildBody(role, budget) {
     if (budget >= 100) { b.push(TOUGH, MOVE); budget -= 100; }
     return b;
   }
+  // looter: a burst collector for dropped energy. Keep it CHEAP + small so it spawns
+  // fast and recycles cheaply once the pile is gone. The generic non-work path scaled
+  // this to ~5 CARRY/MOVE pairs (550-energy body) on a 200-350 death-drip = net loss.
+  // One CARRY/MOVE pair (carry 50) clears a typical creep-death drip; add a 2nd pair
+  // only at a real pile.
+  if (role === 'looter') {
+    if (budget < 100) return [];
+    b.push(CARRY, MOVE); budget -= 100;
+    if (budget >= 200) { b.push(CARRY, MOVE); budget -= 100; }
+    return b;
+  }
   // upgrader: big CARRY to maximize energy per trip, fewer trips back to spawn
   if (role === 'upgrader') {
     if (budget < 250) return [];
@@ -234,15 +245,15 @@ function getTargets(room) {
     // bodies; cap 3. Sized by live harvester WORK so it scales up as bodies grow.
     targets.hauler = filled > 0 ? Math.min(3, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
-    // Reclaim dropped energy: once a container exists (free bank boost), OR while
-    // pre-container if harvesters are overflowing (pool swings) and a big pile is
-    // decaying — recycling that waste beats letting it rot. Gate on pile size so a
-    // lone 10-unit drop doesn't pull a creep off productive work. Scale the worker
-    // count with the pile so a big spill (e.g. energy a removed construction site
-    // released from a withheld builder) is reclaimed before it stalls the economy.
+    // Reclaim dropped energy: only when there's a REAL pile (>=200, i.e. more than a
+    // trivial blip). The old `filled > 0 ||` short-circuit made this fire on ANY drop
+    // (containers are always filled here), so every creep-death drip spawned a big
+    // looter that then hogged the spawn's energy — a net loss. Scale the count with
+    // the pile (cap 2) so a big spill (e.g. energy released from a removed site) is
+    // reclaimed before it stalls the economy.
     const droppedAmt = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
-    targets.looter = ((filled > 0 || droppedAmt >= 200) && droppedAmt > 0)
-      ? Math.min(3, Math.ceil(droppedAmt / 500)) : 0;
+    targets.looter = (droppedAmt >= 200)
+      ? Math.min(2, Math.ceil(droppedAmt / 500)) : 0;
     const minerals = room.find(FIND_MINERALS);
     targets.miner = 0;
     if (minerals.length) {
@@ -451,19 +462,23 @@ function manageSpawns(room) {
     }
   }
 
-  // Surplus looter reclamation: the looter ONLY spawns when dropped>=500, so any
-  // live looter while targets.looter is 0 (nothing on the ground) is a pure upkeep
-  // drain — and worse, on the old idle-fallback it would steal spawn energy.
-  // Recycle the one nearest end-of-life so its body energy returns to the pool.
-  // Gated on !targets.looter so we never kill a collector mid-pickup.
-  if (!targets.looter && typeof s.recycleCreep === 'function') {
+  // Surplus looter reclamation: the looter only earns its upkeep while there's
+  // something on the ground. Once the room is genuinely drop-free (dropped==0),
+  // any live looter is pure upkeep burn (and the old idle-fallback used to steal
+  // spawn energy) — recycle the one nearest end-of-life so its body energy returns
+  // to the pool. Gated on a real zero-drop scan so we never kill a collector
+  // mid-pile (targets.looter can read 0 while a <200 blip still needs picking).
+  if (typeof s.recycleCreep === 'function') {
     const looters = Object.values(Game.creeps)
       .filter(c => c.memory.role === 'looter' && c.room.name === room.name && c.body.length >= 2);
     if (looters.length) {
-      const victim = looters.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
-      if (s.recycleCreep(victim) === OK) {
-        console.log('Recycled idle looter', victim.name, 'no drops (target 0), energy', room.energyAvailable);
-        return;
+      const droppedNow = room.find(FIND_DROPPED_RESOURCES).reduce((n, r) => n + r.amount, 0);
+      if (droppedNow === 0) {
+        const victim = looters.reduce((a, b) => (a.ticksToLive > (b.ticksToLive || 0) ? a : b));
+        if (s.recycleCreep(victim) === OK) {
+          console.log('Recycled idle looter', victim.name, 'room drop-free, energy', room.energyAvailable);
+          return;
+        }
       }
     }
   }
