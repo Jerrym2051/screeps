@@ -46,7 +46,7 @@ function findDumpTarget(creep, source) {
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {
     const pos = new RoomPosition(mem.x, mem.y, mem.roomName);
-    const site = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER);
+    const site = pos.lookFor(LOOK_STRUCTURES).find(s => s.structureType === STRUCTURE_CONTAINER && s.my);
     if (site && site.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return site;
   }
   // 2) any container adjacent to the source (the real source container)

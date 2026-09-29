@@ -33,7 +33,7 @@ function placeContainers(room) {
     if (srcMem.containerPos) {
       const cp = srcMem.containerPos;
       const pos = new RoomPosition(cp.x, cp.y, cp.roomName);
-      const hasStruct = pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_CONTAINER);
+      const hasStruct = pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType === STRUCTURE_CONTAINER && s.my);
       const hasSite = pos.lookFor(LOOK_CONSTRUCTION_SITES).length > 0;
       if (hasStruct || hasSite) continue; // committed spot is real — leave it alone
       if (Game.time < (srcMem.retryAt || 0)) continue; // rate-limit re-placement (no thrash)
@@ -43,7 +43,7 @@ function placeContainers(room) {
     // (2) Adopt any container that already exists near the source (structure or
     //     site) into memory so the builder focuses on it instead of ramparts. This
     //     also heals the old duplicate-container sites (one becomes the target).
-    const nearContainers = room.find(FIND_STRUCTURES, {
+    const nearContainers = room.find(FIND_MY_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
