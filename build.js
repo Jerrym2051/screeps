@@ -30,6 +30,30 @@ function placeContainers(room) {
     //     position that had no site, so the source container was never (re)built,
     //     the builder fell through to rampart sites, and income stayed carry-limited.
     const srcMem = Memory.rooms[room.name].sources[src.id] || (Memory.rooms[room.name].sources[src.id] = {});
+    // (1) If a usable container already sits near the source, adopt the emptiest
+    //     one and cancel any redundant own container site — this MUST run before
+    //     the remembered-spot check, otherwise a stale containerPos pointing at a
+    //     construction site (e.g. the 19,14 we built while the neutral containers
+    //     were misread as foreign) short-circuits the loop and keeps the builder
+    //     draining energy on a second container beside an existing one.
+    const nearContainers = room.find(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
+        Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
+    });
+    if (nearContainers.length > 0) {
+      const best = nearContainers.reduce((a, b) =>
+        (a.store.getFreeCapacity(RESOURCE_ENERGY) >= b.store.getFreeCapacity(RESOURCE_ENERGY) ? a : b));
+      srcMem.containerPos = { x: best.pos.x, y: best.pos.y, roomName: room.name };
+      for (const site of room.find(FIND_CONSTRUCTION_SITES, {
+        filter: s => s.structureType === STRUCTURE_CONTAINER && s.my &&
+          Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2 })) {
+        site.remove();
+        console.log('removed redundant container site at', site.pos.x, site.pos.y);
+      }
+      continue;
+    }
+    // (2) Once committed to a spot (no usable container near source), don't place a
+    //     second one unless that spot is stale (no structure AND no site there).
     if (srcMem.containerPos) {
       const cp = srcMem.containerPos;
       const pos = new RoomPosition(cp.x, cp.y, cp.roomName);
@@ -40,36 +64,12 @@ function placeContainers(room) {
       srcMem.retryAt = Game.time + 200;
       delete srcMem.containerPos; // stale — fall through and place a fresh one
     }
-    // (2) Adopt any container that already exists near the source (structure or
-    //     site) into memory so the builder focuses on it instead of ramparts. This
-    //     also heals the old duplicate-container sites (one becomes the target).
-    const nearContainers = room.find(FIND_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
-        Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
-    });
-    if (nearContainers.length > 0) {
-      // Prefer the container with the most free capacity so harvesters always have
-      // a live dump target (an arbitrary pick could land on a full 2000/2000 one).
-      const best = nearContainers.reduce((a, b) =>
-        (a.store.getFreeCapacity(RESOURCE_ENERGY) >= b.store.getFreeCapacity(RESOURCE_ENERGY) ? a : b));
-      srcMem.containerPos = { x: best.pos.x, y: best.pos.y, roomName: room.name };
-      // A usable container already exists — cancel any redundant container site we
-      // started near this source (e.g. the one built while they were misread as foreign).
-      for (const site of room.find(FIND_CONSTRUCTION_SITES, {
-        filter: s => s.structureType === STRUCTURE_CONTAINER && s.my &&
-          Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2 })) {
-        site.remove();
-        console.log('removed redundant container site at', site.pos.x, site.pos.y);
-      }
-      continue;
-    }
+    // (3) Adopt an in-progress container site so the builder focuses on it.
     const nearSites = room.find(FIND_CONSTRUCTION_SITES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER &&
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
     if (nearSites.length > 0) {
-      // Adopt the most-progressed container site so the builder's target never
-      // swaps to a fresh 0-progress duplicate (which reset the 4750/5000 build).
       const best = nearSites.reduce((a, b) => (a.progress >= b.progress ? a : b));
       srcMem.containerPos = { x: best.pos.x, y: best.pos.y, roomName: room.name };
       continue;
