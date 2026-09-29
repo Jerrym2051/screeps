@@ -70,6 +70,20 @@ function getRoomPriority(roomName) {
   return 999;
 }
 
+// Compass-east neighbor of a room name, zero-padded to the 2-digit screeps format.
+// E-axis rooms step +1 to the east (E46 -> E47); W-axis rooms step -1 (W05 -> W04).
+// Returns null if the result would wrap past the E/W axis (no expansion that way).
+function eastNeighbor(roomName) {
+  const m = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+  if (!m) return null;
+  let axis = m[1], num = parseInt(m[2]);
+  if (axis === 'W') { num -= 1; if (num < 1) return null; }
+  else { num += 1; }
+  if (num > 125) return null;
+  const p = n => (n < 10 ? '0' + n : '' + n);
+  return axis + p(num) + m[3] + p(parseInt(m[4]));
+}
+
 function buildBody(role, budget) {
   budget = Math.max(0, budget - 10);
   if (budget <= 0) return [];
@@ -225,11 +239,12 @@ function getTargets(room) {
     // starves the builder mid-build. Once the container exists the harvesters
     // dump at the source and income jumps, so the upgrader is affordable again.
     const haveContainer = filled > 0;
-    // Updaters: 5 at RCL2 (rush RCL3 — the bank is capped at 550 and harvesters
-    // overflow into containers, so the surplus income is best spent on the
-    // controller), 2 at RCL3+ (where expansion/defence competes for energy). The
+    // Updaters: rush RCL3 at u3 (bank capped at 550, surplus overflows into
+    // containers, so spare income is best spent on the controller). Once RCL3 is
+    // reached, drop to u1 — a single WORK keeps the controller above its downgrade
+    // timer while the bank funds the outpost claim + first remote harvester. The
     // old bank-gated formula churned (3 at 550 -> 1 at 300) and culled upgraders.
-    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 3 : 5) : 0;
+    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 3 : 1) : 0;
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
@@ -243,7 +258,22 @@ function getTargets(room) {
     // Floor of 2: one source (~10/tick) needs 2 haulers to drain it even with small
     // bodies; cap 3. Sized by live harvester WORK so it scales up as bodies grow.
     targets.hauler = filled > 0 ? Math.min(3, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
-    targets.claimer = (controller && !controller.my) ? 1 : 0;
+    // Expansion: claim the room directly to the east (the chosen expansion
+    // direction). Field at most one claimer per target, and only when the home
+    // bank has recovered (>=400) so the claim doesn't starve RCL3 operations
+    // (claimer body costs 350). The claimer claims + reserves the controller to
+    // hold the room; remote harvesters are sent later once it is ours.
+    const eastRoom = eastNeighbor(room.name);
+    let expansionTarget = null;
+    if (eastRoom && room.energyAvailable >= 400) {
+      const er = Game.rooms[eastRoom];
+      const alreadyClaimed = !!(er && er.controller && er.controller.my);
+      const inTransit = Object.values(Game.creeps)
+        .some(c => c.memory.role === 'claimer' && c.memory.targetRoom === eastRoom);
+      if (!alreadyClaimed && !inTransit) expansionTarget = eastRoom;
+    }
+    targets.claimer = expansionTarget ? 1 : ((controller && !controller.my) ? 1 : 0);
+    if (expansionTarget) targets.claimerTarget = expansionTarget;
     // Reclaim dropped energy: only when there's a REAL pile (>=200, i.e. more than a
     // trivial blip). The old `filled > 0 ||` short-circuit made this fire on ANY drop
     // (containers are always filled here), so every creep-death drip spawned a big
@@ -634,6 +664,7 @@ function manageSpawns(room) {
      if (role === 'harvester' && room.energyAvailable < 290 && functionalHarvesterCount >= 4) continue;
     // Pick best source for harvesters
     const memory = { role };
+    if (role === 'claimer' && targets.claimerTarget) memory.targetRoom = targets.claimerTarget;
     if (role === 'harvester') {
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;
