@@ -84,6 +84,7 @@ function buildBody(role, budget) {
     return b;
   }
   if (role === 'repairer') {
+    if (budget < 200) return [];
     while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
     if (budget >= 100) { b.push(CARRY, MOVE); }
     return b;
@@ -217,7 +218,9 @@ function getTargets(room) {
     }
     targets.defender = hostilesCount ? Math.min(hostilesCount, 5) : (room.controller && room.controller.level >= 4 ? 1 : 0);
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 3) : 0;
-    targets.repairer = hasFort ? 1 : 0;
+    // Repairers only after the container+hauler loop is live (a no-WORK repairer
+    // pre-container just drains the spawn's pull; repair the existing rampart later).
+    targets.repairer = (filled > 0 && hasFort) ? 1 : 0;
   } else if (stage === 'outpost') {
     const budget = Math.max(room.energyAvailable, room.energyCapacityAvailable);
     const maxAffordable = Math.max(1, Math.floor(budget / 250));
