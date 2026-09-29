@@ -387,18 +387,18 @@ function manageSpawns(room) {
        // buildBody scales this body UP to 2-WORK (work,work,carry,move @ 300) instead
        // of carry-trip 1-WORK at 200. (functionalHarvesterCount === 0 stays the
        // true crisis path, still allowed on a 1-WORK emergency prodBody below.)
-       let body = buildBody('harvester', room.energyAvailable);
-       if (!body.length) body = prodBody;
-       // Don't spend a 200-290 bank on a 1-WORK emergency when we still have
-       // functional harvesters: the 1-WORK body just perpetuates carry-trip income
-       // (~0.9/tick) and the ~220 spawn cost resets the bank to ~30 every cycle,
-       // preventing it from ever reaching 290 for a real 2-WORK body. Wait until
-       // the pool can fund >=2 WORK, which materially lifts income and stops the
-       // crash-recycle thrash. The live harvester keeps collecting meanwhile.
-       const workCount = body.filter(p => p === WORK).length;
-       if (workCount < 2 && functionalHarvesterCount > 0) {
-         return;
-       }
+        let body = buildBody('harvester', room.energyAvailable);
+        if (!body.length) body = prodBody;
+        // Keep the source worked even when the bank is low: allow a 1-WORK
+        // emergency replacement while functional harvesters are critically few
+        // (<4), so dying harvesters get replaced instead of the count collapsing.
+        // Only gate to >=2 WORK (to let the bank climb) when we already have enough
+        // functional harvesters. (functionalHarvesterCount===0 is always allowed
+        // via the crisis path above.)
+        const workCount = body.filter(p => p === WORK).length;
+        if (workCount < 2 && functionalHarvesterCount >= 4) {
+          return;
+        }
       const memory = { role: 'harvester' };
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;
@@ -460,9 +460,12 @@ function manageSpawns(room) {
         }
       }
     }
-    // (d) Post-container: shed a surplus builder (only if >1) to bank the next
-    //     harvester while a deficit exists. Keeps >=1 builder.
-    if (controller && controller.level < 3 && (targets.harvester || 0) > (counts.harvester || 0) && (counts.builder || 0) > 1) {
+    // (d) Post-container only: shed a surplus builder (only if >1) to bank the next
+    //     harvester while a deficit exists. NEVER touch builders before the source
+    //     container is built — the builder is the only thing that can finish it,
+    //     and recycling it mid-build is what stalled the container and spiraled the
+    //     room (a builder dies, isn't replaced at full bank, harvester deaths follow).
+    if (controller && controller.level < 3 && contStruct > 0 && (targets.harvester || 0) > (counts.harvester || 0) && (counts.builder || 0) > 1) {
       const blds = Object.values(Game.creeps)
         .filter(c => c.memory.role === 'builder' && c.room.name === room.name && c.body.length >= 2);
       if (blds.length > 1) {
@@ -538,7 +541,10 @@ function manageSpawns(room) {
     // functional harvesters still run — a 1-WORK spawn (~200) just resets the bank
     // to ~0 and perpetuates the carry-trip thrash, blocking the climb to 290+.
     // Wait for a 2-WORK body (>=290) the live harvesters are banking toward.
-    if (role === 'harvester' && room.energyAvailable < 290 && functionalHarvesterCount > 0) continue;
+     // Pre-container: keep the source worked by allowing 1-WORK replacements
+     // whenever functional harvesters drop below 4 (so the count can't collapse),
+     // but bank for a >=2-WORK body when we have enough harvesters.
+     if (role === 'harvester' && room.energyAvailable < 290 && functionalHarvesterCount >= 4) continue;
     // Pick best source for harvesters
     const memory = { role };
     if (role === 'harvester') {

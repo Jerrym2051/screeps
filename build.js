@@ -56,7 +56,10 @@ function placeContainers(room) {
         Math.abs(s.pos.x - src.pos.x) <= 2 && Math.abs(s.pos.y - src.pos.y) <= 2
     });
     if (nearSites.length > 0) {
-      srcMem.containerPos = { x: nearSites[0].pos.x, y: nearSites[0].pos.y, roomName: room.name };
+      // Adopt the most-progressed container site so the builder's target never
+      // swaps to a fresh 0-progress duplicate (which reset the 4750/5000 build).
+      const best = nearSites.reduce((a, b) => (a.progress >= b.progress ? a : b));
+      srcMem.containerPos = { x: best.pos.x, y: best.pos.y, roomName: room.name };
       continue;
     }
 
