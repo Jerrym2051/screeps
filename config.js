@@ -211,8 +211,7 @@ function getTargets(room) {
     const WORK_TO_SATURATE = 5;
     const workPerBody = Math.max(1, buildBody('harvester', budget).filter(p => p === WORK).length);
     const harvestersPerSource = Math.min(5, Math.max(3, Math.ceil(WORK_TO_SATURATE / workPerBody) + 1));
-    targets.harvester = totalSources * harvestersPerSource
-      + Math.max(0, containers.length - filled);
+    targets.harvester = totalSources * harvestersPerSource;
     // Upgraders must run to hold the controller against its downgrade timer (~8k
     // ticks) and push RCL. Scaled by surplus so they only take energy the
     // harvester+builder foundation isn't using: 1 always (anti-downgrade), +1 at
