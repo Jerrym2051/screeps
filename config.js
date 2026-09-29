@@ -387,7 +387,16 @@ function reportStatus(room) {
      ' hlr(' + (counts.hauler || 0) + 'x' + roomCreeps.filter(cr=>cr.memory.role==='hauler').reduce((n,cr)=>n+cr.store.getUsedCapacity(RESOURCE_ENERGY),0) + ') ' +
       'upg(' + (counts.upgrader || 0) + ') ' +
       ' cpu ' + Math.round(Game.cpu.getUsed()) + '/' + (Game.cpu.limit || 100) +
-     ' spawn ' + spawning);
+      ' spawn ' + spawning);
+  if (Game.time % 50 === 0) {
+    const w = (r) => Object.values(Game.creeps).filter(c => c.memory.role === r && c.room && c.room.name === room.name).reduce((n, c) => n + c.body.filter(p => p.type === WORK).length, 0);
+    const c = (r) => Object.values(Game.creeps).filter(c => c.memory.role === r && c.room && c.room.name === room.name).reduce((n, cr) => n + cr.body.filter(p => p.type === CARRY).length, 0);
+    const hp = Object.values(Game.creeps).filter(cr => cr.memory.role === 'hauler' && cr.room && cr.room.name === room.name).map(cr => cr.pos.x + ',' + cr.pos.y + ':' + cr.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + cr.store.getCapacity(RESOURCE_ENERGY));
+    const bank = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION }).reduce((n, s) => n + s.store.getUsedCapacity(RESOURCE_ENERGY), 0);
+    const srcs = room.find(FIND_SOURCES).map(s => s.pos.x + ',' + s.pos.y + ':' + room.name);
+    const conts = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).map(c => c.pos.x + ',' + c.pos.y + ':' + c.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + c.store.getCapacity(RESOURCE_ENERGY));
+    console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|'));
+  }
 }
 
 function manageSpawns(room) {
@@ -632,13 +641,13 @@ function manageSpawns(room) {
     return;
   }
 
-  // Expansion: field ONE claimer for the east outpost when the home bank is full
-  // (energyAvailable == capacity). Bypassing the priority queue guarantees the
-  // one-time claimer goes out before a routine hauler-TTL replenishment drains the
-  // bank below the claimer's cost (which had the claimer flap on/off forever).
-  // Full-bank gating means it never starves income roles.
+  // Expansion: field ONE claimer for the east outpost once the home bank has
+  // recovered enough (>= 500) to absorb the claimer cost (~350-410) and still
+  // keep income roles running. Bypassing the priority queue guarantees the
+  // one-time claimer goes out before a routine hauler-TTL replenishment grabs
+  // the slot when the bank peaks — which had the claimer flap on/off forever.
   if (targets.claimerTarget && (counts.claimer || 0) === 0 &&
-      room.energyAvailable >= room.energyCapacityAvailable) {
+      room.energyAvailable >= 500 && room.energyAvailable >= room.energyCapacityAvailable - 150) {
     const cbody = buildBody('claimer', room.energyAvailable);
     if (cbody.length) {
       const result = s.createCreep(cbody, 'claimer' + Game.time, { role: 'claimer', targetRoom: targets.claimerTarget });
