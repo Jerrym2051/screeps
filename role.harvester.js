@@ -42,24 +42,21 @@ function findRemoteSource(creep) {
 function findDumpTarget(creep, source) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
-  // COLD-START GUARD: once harvesters dump into the source container instead of
-  // the spawn/extensions, the bank is refilled ONLY by a hauler. If the hauler
-  // doesn't exist yet (or the bank is near-empty), the pool drains to 0 and the
-  // spawn can't even make a hauler — a death spiral. So while no hauler is alive
-  // OR energyAvailable is < 150, top the bank FIRST; once a hauler is present and
-  // the bank is healthy, dump into the container (the hauler then feeds the bank).
+  // COLD-START GUARD: only while NO hauler exists yet. The bank is refilled by a
+  // hauler once the container economy runs, but the first hauler has to be spawned
+  // from spawn energy, so until one is alive harvesters top the bank. Once a hauler
+  // exists, harvesters dump into the source container CONSISTENTLY — toggling back
+  // to the spawn on every energyAvailable dip is what made them ping-pong.
   const haulers = creep.room.find(FIND_MY_CREEPS, {
     filter: cr => cr.memory && cr.memory.role === 'hauler'
   });
-  const bankDeficit = (creep.room.energyCapacityAvailable - creep.room.energyAvailable) > 0;
-  if (haulers.length === 0 || creep.room.energyAvailable < 150) {
+  if (haulers.length === 0) {
     if (spawn && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return spawn;
     const ext = creep.room.find(FIND_MY_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
     if (ext.length) return creep.pos.findClosestByRange(ext);
     if (spawn) return spawn; // bank full (or spawn is the only sink) — fall back
   }
-  void bankDeficit;
   // 1) source's own container (by memory), verified to actually exist + have space
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {
