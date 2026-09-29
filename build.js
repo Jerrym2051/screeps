@@ -97,25 +97,30 @@ function placeContainers(room) {
     }
   }
 
-  // Overflow / bank buffer: the source container fills and harvesters then drop
-  // energy on the ground. Lay extra containers right beside the source (up to the
-  // room's container limit of 5) so harvesters have space to dump instead of
-  // overflowing — and as a one-time energy sink for the surplus. Only when the pool
-  // holds real surplus (>=400) so we never compete with the income unlock.
+  // Bank buffer: at RCL2 the energy bank caps at 550 (spawn+extensions) and the
+  // source containers are full, so any extra harvest overflows to the ground. Lay
+  // more containers right BESIDE THE SPAWN (up to the room's 5-container limit) as
+  // bank storage the haulers top up when extensions/spawn are full — that absorbs
+  // surplus into storage instead of letting it rot on the ground, and each 5000-build
+  // container is itself a one-time energy sink. Placed near the SPAWN, not the
+  // source, so placeContainers' source-adoption cleanup can't prune them as
+  // "redundant" source sites (which caused the place/remove churn).
+  const spawn = room.find(FIND_MY_SPAWNS)[0];
   const contUsable = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).length;
   const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
-  let totalCont = contUsable + contSites;
-  if (totalCont < 5 && room.energyAvailable >= 400) {
-    for (const src of sources) {
-      for (let r = 1; r <= 2 && totalCont < 5; r++) {
-        for (const pos of ring(src.pos, r)) {
-          if (totalCont >= 5) break;
-          if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
-          const t = room.getTerrain().get(pos.x, pos.y);
-          if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
-          if (makeSite(pos, STRUCTURE_CONTAINER, room) === OK) {
-            console.log('overflow container placed at', pos.x, pos.y, '(total', ++totalCont + '/5)');
-          }
+  const max = 5 - (contUsable + contSites);
+  if (spawn && max > 0) {
+    let placed = 0;
+    outer: for (let r = 2; r <= 3 && placed < max; r++) {
+      for (const pos of ring(spawn.pos, r)) {
+        if (placed >= max) break outer;
+        if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
+        const t = room.getTerrain().get(pos.x, pos.y);
+        if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
+        if (pos.findInRange(FIND_MY_STRUCTURES, 0).some(s => s.structureType === STRUCTURE_CONTAINER)) continue;
+        if (makeSite(pos, STRUCTURE_CONTAINER, room) === OK) {
+          placed++;
+          console.log('bank container placed at', pos.x, pos.y, '(total', contUsable + contSites + placed + '/5)');
         }
       }
     }

@@ -27,8 +27,23 @@ module.exports = function (creep) {
       if (creep.transfer(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
       return;
     }
-    // All banks full: hold near the spawn and wait for a spawner/builder to create
-    // headroom. Dropping on the ground here would just cause looter churn.
+    // Banks full: spill into a container with room (the spawn-side bank containers
+    // we build act as overflow storage). Without this a full hauler stalls and
+    // harvesters overflow to the ground.
+    const nearCont = creep.pos.findInRange(FIND_STRUCTURES, 3, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+    });
+    const farCont = creep.room.find(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+    });
+    const cbest = nearCont.length ? nearCont : farCont;
+    if (cbest.length) {
+      const best = cbest.reduce((a, b) => a.store.getFreeCapacity(RESOURCE_ENERGY) >= b.store.getFreeCapacity(RESOURCE_ENERGY) ? a : b);
+      if (creep.transfer(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
+      return;
+    }
+    // All banks + containers full: hold near the spawn and wait for a spawner/builder
+    // to create headroom. Dropping on the ground here would just cause looter churn.
     if (spawn && creep.pos.getRangeTo(spawn) > 1) creep.moveTo(spawn, { reusePath: 5 });
     return;
   }
