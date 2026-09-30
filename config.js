@@ -722,9 +722,13 @@ function manageSpawns(room) {
      // income and drain roles — each upgrader/builder spawn (~250-300) crashes the
      // bank back to ~110, so harvesters/haulers never reach the 2-WORK/2-CARRY
      // bodies needed to climb out. Field only the income backbone until bank>=500.
-     if (role === 'looter') continue; // drop-free room: a 505 looter body is pure upkeep drain
-     if (room.energyAvailable < 500 && role !== 'harvester' && role !== 'hauler') continue;
-     if (role === 'claimer') {
+      if (role === 'looter') continue; // drop-free room: a 505 looter body is pure upkeep drain
+      if (room.energyAvailable < 500 && role !== 'harvester' && role !== 'hauler') continue;
+      // Defer claimers until the home tower exists: a 650 body on the 800-cap bank
+      // dips it to ~150 and starves the 600-tower build. E47S42's reservation lasts
+      // 5000 ticks (~83 min), so this pause is well within the grace window.
+      if (role === 'claimer' && !room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).length) continue;
+      if (role === 'claimer') {
        const cb = buildBody('claimer', room.energyAvailable);
        if (cb.length === 0 || bodyCost(cb) > room.energyAvailable) continue;
      }
