@@ -627,6 +627,25 @@ function manageSpawns(room) {
     }
   }
 
+  // Harvester resilience: a <2-WORK harvester under-harvests the source (6/tick vs
+  // the 10/tick cap), so the bank climbs slowly and full bodies never become
+  // affordable — a death-spiral. Once the bank can fund a 2-WORK harvester (306),
+  // recycle the weakest living harvester so a stronger one replaces it, lifting
+  // income to source-saturation (10/tick) and letting the bank climb to a claimer.
+  if (room.energyAvailable >= 350 && typeof s.recycleCreep === 'function') {
+    const weakHr = Object.values(Game.creeps)
+      .filter(c => c.memory.role === 'harvester' && c.room.name === room.name &&
+        c.body.filter(p => p.type === WORK).length < 2);
+    if (weakHr.length) {
+      weakHr.sort((a, b) => (a.ticksToLive || 0) - (b.ticksToLive || 0));
+      const victim = weakHr[0];
+      if (s.recycleCreep(victim) === OK) {
+        console.log('Recycle: weak harvester', victim.name, victim.body.filter(p => p.type === WORK).length + 'W -> 2-WORK, energy', room.energyAvailable);
+        return;
+      }
+    }
+  }
+
   // Conserve: hold ALL spawns while starving, banking for the role the room needs
   // next so a replaceable worker doesn't steal the energy meant for it:
   //  - a functional harvester nearing death that can't yet be replaced, or
@@ -647,15 +666,13 @@ function manageSpawns(room) {
   }
 
     // Expansion: field ONE claimer for the east outpost once the home bank has
-    // recovered enough (>= 500) to absorb the claimer cost and still keep income
-    // roles running. Bypassing the priority queue guarantees the one-time claimer
-    // goes out before a routine hauler-TTL replenishment grabs the slot when the
-    // bank peaks — which had the claimer flap on/off forever. Gate on the REAL
-    // body cost (bodyCost) instead of a stock-350 threshold, because this server's
-    // CLAIM part is non-standard (~600 for [CLAIM,MOVE]); that's what produced the
-    // -6 retries before 650.
+    // recovered to a FULL bank (energyCapacityAvailable) — this round's claimer is a
+    // ~600 energy body, and a partial-bank spawn crashes a fragile RCL3 1-source
+    // economy back into the weak-body death-spiral. Full-bank + the bodyCost guard
+    // below guarantees the spawn never -6s and the post-spawn dip (cap-603) still
+    // leaves enough buffered energy for harvesters to keep saturating the source.
     if (targets.claimerTarget && (counts.claimer || 0) === 0 &&
-        room.energyAvailable >= 500 && room.energyAvailable >= room.energyCapacityAvailable - 150) {
+        room.energyAvailable >= room.energyCapacityAvailable) {
       const cbody = buildBody('claimer', room.energyAvailable);
       if (cbody.length && bodyCost(cbody) <= room.energyAvailable) {
         const result = s.createCreep(cbody, 'claimer' + Game.time, { role: 'claimer', targetRoom: targets.claimerTarget });

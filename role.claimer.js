@@ -17,18 +17,20 @@ module.exports = function (creep) {
   if (!targetRoom) return;
 
   if (creep.room.name !== targetRoom) {
-    // Diagnostic: log how move(exitDir) behaves at the border (every 25 ticks).
-    if (Game.time % 25 === 0) {
-      const fd = creep.room.findExitTo(targetRoom);
-      const ed = exitDirTo(creep.room.name, targetRoom);
-      console.log('[CLM2] pos=' + creep.pos + ' exitDir=' + ed + ' findExitTo=' + fd + ' fat=' + creep.fatigue + ' ttl=' + creep.ticksToLive);
-    }
+    // moveTo(RoomPosition in an unseen room) pathfinds to the exit tile and STOPS
+    // (the pather cannot resolve the unseen room, so it never emits the cross step).
+    // findExitTo needs vision on some servers, so compute the exit DIRECTION from
+    // room-name coordinates (vision-independent) and drive it directly with move().
+    // move(exitDir) is the cross-room primitive: it steps one tile toward the border
+    // and crosses as soon as it reaches the edge.
     const dir = exitDirTo(creep.room.name, targetRoom);
     if (dir > 0) {
+      const before = creep.pos;
       const r = creep.move(dir);
-      if (r === OK) return;            // crossing / walking toward the border
-      if (r === ERR_TIRED) return;     // fatigued; will retry next tick
-      if (Game.time % 25 === 0) console.log('[CLM2] move(' + dir + ') err=' + r + ' at ' + creep.pos); // blocked somehow
+      if (Game.time % 5 === 0) console.log('[CLM2] pos=' + before + ' move(' + dir + ')=' + r + ' room=' + creep.room.name + ' fat=' + creep.fatigue);
+      if (r === OK) return;          // stepped / crossed
+      if (r === ERR_TIRED) return;   // fatigued, retry next tick
+      // move blocked (e.g. ERR_WALL): fall back to pathing to the exit tile, then retry move.
     }
     creep.moveTo(new RoomPosition(25, 25, targetRoom), { reusePath: 0 });
     return;
