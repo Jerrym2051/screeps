@@ -1,5 +1,5 @@
 // config.js - body builder, population targets, spawn planner, multi-room manager
-const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','builder','attacker','looter','miner','remoteharvester'];
+const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','builder','attacker','looter','miner'];
 // Threat-model priority: 0 = highest, 100 = lowest. Lower = spawn first.
 const ROLE_PRIORITY = {
   harvester:  0,  // energy foundation — always first
@@ -8,14 +8,7 @@ const ROLE_PRIORITY = {
                   // the spawn, so a late hauler starves and the bank can't recover)
   builder:    5,  // container/income unlock — must beat the upgrader pre-RCL3
   upgrader:   6,  // permanent RCL/GCL climb (1 held for the downgrade timer)
-  remoteharvester: 3, // 2nd-source income — spawns BEFORE hauler/builder/repairer at bank>=500:
-                      // on a fragile 1-source RCL3 the hauler/repairer spawn bursts
-                      // (200-400) are what cap the bank at ~644 and prevent it ever
-                      // reaching the tower fuel / stabilizer ceiling. The remote-
-                      // harvester is the escape (double the income -> bank climbs past
-                      // the burst ceiling -> tower fuels sustainably -> 2-source stable).
-                      // Capped at 1 in getTargets, so priority only affects the first spawn.
-  claimer:   10,  // claim new rooms
+  claimer:   10,  // claim new rooms (expansion — gated to RCL>=4 until the home can support it)
   defender:  15,  // room defense
   repairer:  20,  // ramparts/walls/roads
   attacker:  40,  // offense
@@ -155,18 +148,8 @@ function buildBody(role, budget) {
   // Haulers are pure logistics (carry+move, no WORK) — using the generic isWork path
   // required budget>=200, so at a starved bank (<200) buildBody returned [] and no
   // hauler ever spawned, leaving the source containers full and harvesters overflowing.
-  // A [CARRY,MOVE] pair spawns at bank 100 and scales to carry 250 at 500+.
-  // remoteharvester: LONG cross-room trips (border + inland to the source and back),
-  // so it must MOVE-heavy: speed is capped at 2 tiles/tick only while MOVE >= the
-  // WORK+CARRY parts under load, and the return trip wants real carry capacity.
-  // Pair 1W with 2 MOVE (1:1 load:speed) and scale CARRY, never WORK-heavy.
-  if (role === 'remoteharvester') {
-    if (budget < 250) return [];
-    while (budget >= 250) { b.push(WORK, CARRY, MOVE, MOVE); budget -= 250; }
-    if (budget >= 150) { b.push(CARRY, MOVE); budget -= 150; }
-    return b;
-  }
-  const isWork = ['builder','miner'].includes(role);
+   // A [CARRY,MOVE] pair spawns at bank 100 and scales to carry 250 at 500+.
+   const isWork = ['builder','miner'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
     while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
@@ -293,7 +276,12 @@ function getTargets(room) {
     // hold the room; remote harvesters are sent later once it is ours.
     const eastRoom = eastNeighbor(room.name);
     let expansionTarget = null;
-    if (eastRoom && room.energyAvailable >= 500) {
+    // Expansion: claim the room directly to the east once the home is solid — gate to
+    // RCL>=4 so a 350-body claimer can't crash a recovering home. The claimer claims +
+    // reserves the eastern neighbor; only field one at a time. (A 2-source room has no
+    // cross-room remote-harvester; this claimer is the only outpost path, and only fires
+    // when the home can support it.)
+    if (eastRoom && controller && controller.level >= 4 && room.energyAvailable >= 500) {
       const er = Game.rooms[eastRoom];
       const alreadyClaimed = !!(er && er.controller && er.controller.my);
       const inTransit = Object.values(Game.creeps)
@@ -302,27 +290,6 @@ function getTargets(room) {
     }
     targets.claimer = expansionTarget ? 1 : ((controller && !controller.my) ? 1 : 0);
     if (expansionTarget) targets.claimerTarget = expansionTarget;
-    // Remote harvesting: farm E47S42's source once the home bank is healthy AND its
-    // source container is saturated (cE>=1000 => one source is flowing strongly enough
-    // that a ~400-500 remote-harvester spawn can't starve it). This is the durable
-    // lift off the 1-source thrash: double the income, then the home bank + tower can
-    // both be sustained. The claimer's reservation (~5000-tick grace) covers the spawn;
-    // the target clears when E47S42 becomes owned or the reservation lapses.
-    const cE = containers.reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
-    // Remote harvesting: farm the east outpost's source once it's visible + safe.
-    // "Safe" = ours, neutral, or friend-reserved. The claimer's INTERIOR navigate is
-    // flaky from the landing pocket (the pather hard-no-ops moveTo from x=0/y=49 edge
-    // tiles), so its reservation lapses even though reserveController returns 0 —
-    // but a visible neutral/friend room is still harvestable and the source needs
-    // farming regardless. Gated on a healthy home bank (>=500) + full source containers
-    // (cE>=1000 => the single source is flowing strongly, so a ~400-500 remote-
-    // harvester body can't crash it). The claimer keeps trying to hold the reservation.
-    const eastR = Game.rooms[eastRoom];
-    const eastSafe = !!(eastR && eastR.controller &&
-      (eastR.controller.my || !eastR.controller.owner ||
-        (eastR.controller.reservation && eastR.controller.reservation.username === 'zma')));
-    targets.remoteharvester = (eastSafe && room.energyAvailable >= 500 && cE >= 1000) ? 1 : 0;
-    if (targets.remoteharvester) targets.remoteTarget = eastRoom;
     // Reclaim dropped energy: only when there's a REAL pile (>=200, i.e. more than a
     // trivial blip). The old `filled > 0 ||` short-circuit made this fire on ANY drop
     // (containers are always filled here), so every creep-death drip spawned a big
@@ -445,12 +412,13 @@ function reportStatus(room) {
     const srcs = room.find(FIND_SOURCES).map(s => s.pos.x + ',' + s.pos.y + ':' + room.name);
     const conts = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).map(c => c.pos.x + ',' + c.pos.y + ':' + c.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + c.store.getCapacity(RESOURCE_ENERGY));
     console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|') + ' TW=' + room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).map(t => t.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + t.store.getCapacity(RESOURCE_ENERGY)).join(',') + ' TS=' + room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_TOWER }).length);
-    const fexit = Game.rooms.E46S42 ? Game.rooms.E46S42.findExitTo('E47S42') : 'na';
+    const expTarget = targets.claimerTarget || eastNeighbor(room.name);
+    const fexit = expTarget ? room.findExitTo(expTarget) : 'no-expansion-target';
     const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.name + '@' + x.pos + '/ttl=' + x.ticksToLive + '/tgt=' + (x.memory.targetRoom||'-') + '/body=' + x.body.map(p => p.type).join(''));
-    const e47 = Game.rooms.E47S42;
-    const e47c = e47 && e47.controller;
-    const e47info = e47 ? 'vis cl' + (e47c && e47c.my ? 'Y' : 'N') + ' rcl' + (e47c ? e47c.level : 0) + ' owner=' + (e47c && e47c.owner ? (e47c.owner.username||'?') : 'none') + ' rsv=' + JSON.stringify(e47c && e47c.reservation) : 'unseen';
-    console.log('[CLM] c=' + cl.join(',') + ' DIR_R=' + RIGHT + ' E=' + TOP_LEFT + '/' + TOP + '/' + TOP_RIGHT + '/' + LEFT + '/' + RIGHT + '/' + BOTTOM_LEFT + '/' + BOTTOM + '/' + BOTTOM_RIGHT + ' findExit=' + fexit + ' e47=' + e47info);
+    const exp = expTarget ? Game.rooms[expTarget] : null;
+    const expc = exp && exp.controller;
+    const expInfo = exp ? 'vis cl' + (expc && expc.my ? 'Y' : 'N') + ' rcl' + (expc ? expc.level : 0) + ' owner=' + (expc && expc.owner ? (expc.owner.username||'?') : 'none') + ' rsv=' + JSON.stringify(expc && expc.reservation) : 'unseen';
+    console.log('[CLM] c=' + cl.join(',') + ' DIR_R=' + RIGHT + ' E=' + TOP_LEFT + '/' + TOP + '/' + TOP_RIGHT + '/' + LEFT + '/' + RIGHT + '/' + BOTTOM_LEFT + '/' + BOTTOM + '/' + BOTTOM_RIGHT + ' findExit=' + fexit + ' exp(' + expTarget + ')=' + expInfo);
   }
 }
 
@@ -506,7 +474,6 @@ function manageSpawns(room) {
       if (functionalHarvesterCount === 0 && typeof s.recycleCreep === 'function') {
         const victims = Object.values(Game.creeps)
           .filter(c => c.room.name === room.name && c.body.length >= 2 &&
-            c.memory.role !== 'remoteharvester' &&
             (c.memory.role !== 'harvester' || !hasCarry(c)));
         if (victims.length) {
           const victim = victims.reduce((a, b) => (a.body.length > b.body.length ? a : b));
@@ -823,7 +790,6 @@ function manageSpawns(room) {
     // Pick best source for harvesters
     const memory = { role };
     if (role === 'claimer' && targets.claimerTarget) memory.targetRoom = targets.claimerTarget;
-    if (role === 'remoteharvester' && targets.remoteTarget) memory.targetRoom = targets.remoteTarget;
     if (role === 'harvester') {
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;

@@ -12,7 +12,6 @@ const roles = {
   miner: require('role.miner'),
   defender: require('role.defender'),
   repairer: require('role.repairer'),
-  remoteharvester: require('role.remote-harvester'),
 };
 
 // Get all rooms we need to manage, sorted by priority
