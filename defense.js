@@ -31,7 +31,7 @@ function flee(creep, hostiles) {
   hostiles = hostiles || getHostilesNear(creep);
   if (!hostiles.length) return;
   // the spawn is the safe zone — workers always run to it
-  const spawn = Game.spawns['Spawn1'];
+  const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   if (spawn) {
     if (spawn.pos.getRangeTo(creep) <= 1) return; // already at safe zone
     creep.moveTo(spawn, { reusePath: 3 });
@@ -73,7 +73,7 @@ function manageSafeMode(room) {
   if (!c.safeModeAvailable || c.safeModeAvailable <= 0) return;
   const hostiles = getHostiles(room);
   if (!hostiles.length) return;
-  const spawn = Game.spawns['Spawn1'];
+  const spawn = room.find(FIND_MY_SPAWNS)[0];
   const nearCore = hostiles.some(h => (spawn && spawn.pos.getRangeTo(h) <= 3) || c.pos.getRangeTo(h) <= 3);
   const totalAttack = hostiles.reduce((s, h) => s + h.getActiveBodyparts(ATTACK) + h.getActiveBodyparts(RANGED_ATTACK), 0);
   if (nearCore || totalAttack >= 6) c.activateSafeMode();

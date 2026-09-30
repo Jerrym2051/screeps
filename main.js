@@ -100,7 +100,7 @@ module.exports.loop = function () {
     // each creep only inside the room it is currently in, because this loop runs
     // once per visible room (without this, every creep executes N times when N
     // rooms are visible — critical once we expand into a second room).
-    const spawn = Game.spawns['Spawn1'];
+    const spawn = room.find(FIND_MY_SPAWNS)[0];
     for (const name in Game.creeps) {
       const creep = Game.creeps[name];
       if (creep.room.name !== roomName) continue;
