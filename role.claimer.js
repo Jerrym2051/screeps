@@ -58,11 +58,11 @@ module.exports = function (creep) {
   if (!creep.memory.arrived) { console.log('[claimer] ARRIVED ' + targetRoom + ' at ' + creep.pos); creep.memory.arrived = true; }
   const c = creep.room.controller;
   if (!c) return;
+  if (Game.time % 10 === 0) console.log('[CLAIM_DEBUG] ' + creep.name + ' pos=' + creep.pos + ' owner=' + (c.owner ? (c.owner.username || '?') : 'none') + ' lvl=' + (c.level || 0) + ' my=' + c.my + ' range=' + c.pos.getRangeTo(creep) + ' room=' + creep.room.name);
   if (!c.my) {
     const r = creep.claimController(c);
-    if (r === ERR_NOT_IN_RANGE) creep.moveTo(c, { reusePath: 5 });
-    else if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
-    else if (r < 0) console.log('[claimer] claim err ' + r + ' at ' + creep.pos);
+    if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
+    else { if (Game.time % 5 === 0) console.log('[claimer] claimController=' + r + ' at ' + creep.pos + ' (approaching) room=' + creep.room.name); creep.moveTo(c, { reusePath: 5 }); }
   } else {
     const r = creep.reserveController(c);
     if (r === ERR_NOT_IN_RANGE) creep.moveTo(c, { reusePath: 5 });
