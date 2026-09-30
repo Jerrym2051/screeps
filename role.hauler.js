@@ -29,11 +29,13 @@ module.exports = function (creep) {
         .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY))[0]);
     if (bank) { if (creep.transfer(bank, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(bank, { reusePath: 5 }); return; }
 
-    // 2) Banks full: fund the tower (defense + auto-repair) from surplus, only while
-    //    the bank stays healthy enough to keep the income backbone running. A tower
-    //    is a 1000-capacity sink, so never starve the spawn/extensions for it.
+    // 2) Banks full: fund the tower (defense + auto-repair) ONLY from true surplus
+    //    (every harvest-buffer container full). On one source the tower's 21/tick
+    //    repair burn exceeds income and collapses the bank, so never feed it from a
+    //    fragile pool. cE>=1500 means both sources are flowing.
     const tw = creep.room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
-    if (tw.length && creep.room.energyAvailable >= 400) {
+    const cE = roomCont().reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
+    if (tw.length && cE >= 1500 && creep.room.energyAvailable >= 400) {
       const t = tw.sort((a, b) => a.store.getFreeCapacity(RESOURCE_ENERGY) - b.store.getFreeCapacity(RESOURCE_ENERGY))[0];
       if (creep.transfer(t, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(t, { reusePath: 5 });
       return;
