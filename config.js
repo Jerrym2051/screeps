@@ -8,7 +8,13 @@ const ROLE_PRIORITY = {
                   // the spawn, so a late hauler starves and the bank can't recover)
   builder:    5,  // container/income unlock — must beat the upgrader pre-RCL3
   upgrader:   6,  // permanent RCL/GCL climb (1 held for the downgrade timer)
-  remoteharvester: 9, // 2nd source income — spawns only once E47S42 is reserved + home cE saturated
+  remoteharvester: 3, // 2nd-source income — spawns BEFORE hauler/builder/repairer at bank>=500:
+                      // on a fragile 1-source RCL3 the hauler/repairer spawn bursts
+                      // (200-400) are what cap the bank at ~644 and prevent it ever
+                      // reaching the tower fuel / stabilizer ceiling. The remote-
+                      // harvester is the escape (double the income -> bank climbs past
+                      // the burst ceiling -> tower fuels sustainably -> 2-source stable).
+                      // Capped at 1 in getTargets, so priority only affects the first spawn.
   claimer:   10,  // claim new rooms
   defender:  15,  // room defense
   repairer:  20,  // ramparts/walls/roads
