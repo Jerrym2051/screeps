@@ -70,7 +70,7 @@ module.exports = function (creep) {
     } else {
       const r = creep.claimController(c);
       if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
-      console.log('[CLAIM3] claim='+r+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' pos='+creep.pos+' cpos='+c.pos);
+      console.log('[CLAIM3] claim='+r+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' pos='+creep.pos+' cpos='+c.pos+' ERR_NOT_ALLOWED='+ERR_NOT_ALLOWED+' ERR_TIRED='+ERR_TIRED+' ERR_NOT_OWNER='+ERR_NOT_OWNER);
       creep.memory.claimPhase = 'reserve';
     }
     creep.moveTo(c, { reusePath: 3 });
