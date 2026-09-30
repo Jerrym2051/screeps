@@ -298,10 +298,19 @@ function getTargets(room) {
     // both be sustained. The claimer's reservation (~5000-tick grace) covers the spawn;
     // the target clears when E47S42 becomes owned or the reservation lapses.
     const cE = containers.reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
+    // Remote harvesting: farm the east outpost's source once it's visible + safe.
+    // "Safe" = ours, neutral, or friend-reserved. The claimer's INTERIOR navigate is
+    // flaky from the landing pocket (the pather hard-no-ops moveTo from x=0/y=49 edge
+    // tiles), so its reservation lapses even though reserveController returns 0 —
+    // but a visible neutral/friend room is still harvestable and the source needs
+    // farming regardless. Gated on a healthy home bank (>=500) + full source containers
+    // (cE>=1000 => the single source is flowing strongly, so a ~400-500 remote-
+    // harvester body can't crash it). The claimer keeps trying to hold the reservation.
     const eastR = Game.rooms[eastRoom];
-    const eastReserved = !!(eastR && eastR.controller && eastR.controller.reservation &&
-      eastR.controller.reservation.username === 'zma' && eastR.controller.reservation.ticksToEnd > 500);
-    targets.remoteharvester = (eastReserved && room.energyAvailable >= 500 && cE >= 1000) ? 1 : 0;
+    const eastSafe = !!(eastR && eastR.controller &&
+      (eastR.controller.my || !eastR.controller.owner ||
+        (eastR.controller.reservation && eastR.controller.reservation.username === 'zma')));
+    targets.remoteharvester = (eastSafe && room.energyAvailable >= 500 && cE >= 1000) ? 1 : 0;
     if (targets.remoteharvester) targets.remoteTarget = eastRoom;
     // Reclaim dropped energy: only when there's a REAL pile (>=200, i.e. more than a
     // trivial blip). The old `filled > 0 ||` short-circuit made this fire on ANY drop
