@@ -60,9 +60,20 @@ module.exports = function (creep) {
   if (!c) return;
   if (Game.time % 10 === 0) console.log('[CLAIM_DEBUG] ' + creep.name + ' pos=' + creep.pos + ' body=' + creep.body.map(p => p.type).join(',') + ' hasCLAIM=' + creep.body.some(p => p.type === CLAIM) + ' cpos=' + c.pos + ' owner=' + (c.owner ? (c.owner.username || '?') : 'none') + ' lvl=' + (c.level || 0) + ' my=' + c.my + ' range=' + c.pos.getRangeTo(creep) + ' room=' + creep.room.name);
   if (!c.my) {
-    const r = creep.claimController(c);
-    if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
-    else { if (Game.time % 5 === 0) console.log('[claimer] claimController=' + r + ' at ' + creep.pos + ' (approaching) room=' + creep.room.name); creep.moveTo(c, { reusePath: 5 }); }
+    const hasC = creep.body.some(p => p.type === CLAIM);
+    const rsv = c.reservation;
+    if (creep.memory.claimPhase === 'reserve') {
+      const rv = creep.reserveController(c);
+      if (rv === 0) console.log('[claimer] RESERVED ' + targetRoom + ' at ' + creep.pos);
+      console.log('[CLAIM3] reserve='+rv+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' ERR_NIN='+ERR_NOT_IN_RANGE+' ERR_IVT='+ERR_INVALID_TARGET+' ERR_NBP='+ERR_NO_BODYPART+' ERR_NOTF='+ERR_NOT_FOUND+' ERR_BUSY='+ERR_BUSY);
+      creep.memory.claimPhase = 'claim';
+    } else {
+      const r = creep.claimController(c);
+      if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
+      console.log('[CLAIM3] claim='+r+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' pos='+creep.pos+' cpos='+c.pos);
+      creep.memory.claimPhase = 'reserve';
+    }
+    creep.moveTo(c, { reusePath: 3 });
   } else {
     const r = creep.reserveController(c);
     if (r === ERR_NOT_IN_RANGE) creep.moveTo(c, { reusePath: 5 });
