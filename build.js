@@ -239,6 +239,15 @@ function placeTowers(room) {
   const c = room.controller;
   if (!c || c.level < 3) return;
   if (room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).length) return;
+  // Defer the tower until the home bank is healthy (>=500): a 600 build funded by
+  // the spawn-side container starves the fragile 1-source recovery cycle (containers
+  // empty -> decay -> collapse). Only site a tower once the bank can absorb the cost,
+  // and clear any tower site placed while fragile so the containers refill first.
+  if (room.energyAvailable < 500) {
+    const sites = room.find(FIND_CONSTRUCTION_SITES);
+    for (const s of sites) { if (s.structureType === STRUCTURE_TOWER) s.remove(); }
+    return;
+  }
   const spawn = room.find(FIND_MY_SPAWNS)[0];
   if (!spawn) return;
   let built = 0;

@@ -717,6 +717,11 @@ function manageSpawns(room) {
 
   // Try to spawn the highest-priority role that can afford a body
   for (const { role } of candidates) {
+     // Recovery mode: below a 500 bank this 1-source economy can't sustain both
+     // income and drain roles — each upgrader/builder spawn (~250-300) crashes the
+     // bank back to ~110, so harvesters/haulers never reach the 2-WORK/2-CARRY
+     // bodies needed to climb out. Field only the income backbone until bank>=500.
+     if (room.energyAvailable < 500 && role !== 'harvester' && role !== 'hauler') continue;
      if (role === 'claimer') {
        const cb = buildBody('claimer', room.energyAvailable);
        if (cb.length === 0 || bodyCost(cb) > room.energyAvailable) continue;
