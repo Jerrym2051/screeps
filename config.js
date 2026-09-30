@@ -397,9 +397,10 @@ function reportStatus(room) {
     const conts = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).map(c => c.pos.x + ',' + c.pos.y + ':' + c.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + c.store.getCapacity(RESOURCE_ENERGY));
     console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|'));
     const fexit = Game.rooms.E46S42 ? Game.rooms.E46S42.findExitTo('E47S42') : 'na';
-    const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.pos + '/ttl=' + x.ticksToLive);
+    const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.name + '@' + x.pos + '/ttl=' + x.ticksToLive + '/tgt=' + (x.memory.targetRoom||'-') + '/body=' + x.body.map(p => p.type).join(''));
     const e47 = Game.rooms.E47S42;
-    const e47info = e47 ? 'vis cl' + (e47.controller && e47.controller.my ? 'Y' : 'N') + ' rcl' + (e47.controller ? e47.controller.level : 0) : 'unseen';
+    const e47c = e47 && e47.controller;
+    const e47info = e47 ? 'vis cl' + (e47c && e47c.my ? 'Y' : 'N') + ' rcl' + (e47c ? e47c.level : 0) + ' owner=' + (e47c && e47c.owner ? (e47c.owner.username||'?') : 'none') + ' rsv=' + JSON.stringify(e47c && e47c.reservation) : 'unseen';
     console.log('[CLM] c=' + cl.join(',') + ' DIR_R=' + RIGHT + ' E=' + TOP_LEFT + '/' + TOP + '/' + TOP_RIGHT + '/' + LEFT + '/' + RIGHT + '/' + BOTTOM_LEFT + '/' + BOTTOM + '/' + BOTTOM_RIGHT + ' findExit=' + fexit + ' e47=' + e47info);
   }
 }
