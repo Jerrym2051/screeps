@@ -172,7 +172,13 @@ function buildBody(role, budget) {
     while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
     if (budget >= 100) { b.push(CARRY, MOVE); }
   } else {
-    while (budget >= 100) { b.push(CARRY, MOVE); budget -= 100; }
+    // Hauler: 2 MOVE per CARRY so it still moves 2 tiles/tick when fully loaded.
+    // A 1:1 body is 1/tick under load — too slow to drain a saturated 2-source
+    // economy, which is exactly why the source containers sat at cE~2000 and the
+    // bank stayed starved. Floor of a single [C,M] pair at low bank so logistics
+    // never stall during cold-start.
+    while (budget >= 150) { b.push(CARRY, MOVE, MOVE); budget -= 150; }
+    if (budget >= 100) { b.push(CARRY, MOVE); budget -= 100; }
   }
   return b;
 }
@@ -707,23 +713,25 @@ function manageSpawns(room) {
   }
 
   // Hauler upsize: the cold-start [CARRY,MOVE] body (cap 50, 1/tick) can't drain a
-  // saturated 2-source economy — the source containers overflow to drops and the
-  // bank never climbs high enough to ever afford a bigger one (a deadlock). When the
-  // bank is solidly full + not in a harvester crisis, force the SMALLEST hauler out
-  // (recycle if it's at the spawn for the body refund, else suicide it) so a bigger
-  // (3-CARRY, cap 150+, 2/tick) hauler spawns and actually lifts the harvest. Keep at
-  // least 2 haulers so containers still drain while the new one builds.
-  if (!needRescue && room.energyAvailable >= 550 && typeof s.recycleCreep === 'function') {
+  // saturated 2-source economy — the source containers sit FULL (cE~2000) and spill
+  // to drops while the bank stays low because the small haulers are the bottleneck.
+  // The signal is CONTAINER saturation (cE high), NOT bank height (which is low
+  // precisely because the haulers can't drain). So gate on cE>=1500 (overflow
+  // evident) + bank>=400 (can afford the bigger replacement); recycle the smallest
+  // hauler (recycle if at the spawn for the refund, else suicide it) so a 3-CARRY+
+  // body spawns and actually lifts the harvest. Keep >=2 haulers draining.
+  const cE = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
+  if (!needRescue && cE >= 1500 && room.energyAvailable >= 400 && typeof s.recycleCreep === 'function') {
     const liveHaulers = Object.values(Game.creeps).filter(c => c.memory.role === 'hauler' && c.room.name === room.name);
     const smallHaulers = liveHaulers.filter(c => c.body.filter(p => p.type === CARRY).length < 3 && c.body.length >= 2);
     if (smallHaulers.length && liveHaulers.length >= 2) {
       const victim = smallHaulers
         .sort((a, b) => a.body.filter(p => p.type === CARRY).length - b.body.filter(p => p.type === CARRY).length
           || (a.ticksToLive || 0) - (b.ticksToLive || 0))[0];
-      const c = victim.body.filter(p => p.type === CARRY).length;
+      const cc = victim.body.filter(p => p.type === CARRY).length;
       const r = s.recycleCreep(victim);
       if (r !== OK) { victim.suicide(); }
-      console.log('Econ: ' + (r === OK ? 'recycled' : 'suicided') + ' small hauler', victim.name, 'C=' + c, '-> bigger, energy', room.energyAvailable);
+      console.log('Econ: ' + (r === OK ? 'recycled' : 'suicided') + ' small hauler', victim.name, 'C=' + cc, 'cE=' + cE, 'bank', room.energyAvailable);
       return;
     }
   }
