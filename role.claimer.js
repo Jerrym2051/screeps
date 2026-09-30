@@ -17,25 +17,34 @@ module.exports = function (creep) {
   if (!targetRoom) return;
 
   if (creep.room.name !== targetRoom) {
-    // moveTo(RoomPosition in an unseen room) pathfinds to the exit tile and STOPS
-    // (the pather cannot resolve the unseen room, so it never emits the cross step).
-    // findExitTo needs vision on some servers, so compute the exit DIRECTION from
-    // room-name coordinates (vision-independent) and drive it directly with move().
-    // move(exitDir) is the cross-room primitive: it steps one tile toward the border
-    // and crosses as soon as it reaches the edge.
     const dir = exitDirTo(creep.room.name, targetRoom);
-    if (dir > 0) {
-      const before = creep.pos;
+    // At the room's border edge in the exit direction, drive the cross directly:
+    // moveTo(path to unseen room) returns -2 (no path) at the exit and never crosses,
+    // but move(exitDir) is the engine's cross-room primitive and crosses on the edge.
+    const atBorder = (dir === RIGHT && creep.pos.x === 49) ||
+                     (dir === LEFT && creep.pos.x === 0) ||
+                     (dir === TOP && creep.pos.y === 0) ||
+                     (dir === BOTTOM && creep.pos.y === 49);
+    if (atBorder && dir > 0) {
       const r = creep.move(dir);
-      if (Game.time % 5 === 0) console.log('[CLM2] pos=' + before + ' move(' + dir + ')=' + r + ' room=' + creep.room.name + ' fat=' + creep.fatigue);
-      if (r === OK) return;          // stepped / crossed
+      if (Game.time % 5 === 0) console.log('[CLM2] CROSS ' + creep.pos + ' move(' + dir + ')=' + r + ' room=' + creep.pos.roomName + ' ttl=' + creep.ticksToLive);
+      if (r === OK) return;          // crossed into the target room
       if (r === ERR_TIRED) return;   // fatigued, retry next tick
-      // move blocked (e.g. ERR_WALL): fall back to pathing to the exit tile, then retry move.
+      // Cross blocked at this border y (wall/exit terrain): scramble along the exit
+      // to the next walkable border tile and retry.
+      const ny = (creep.pos.y + (Game.time % 7) + 1) % 50;
+      const nx = creep.pos.x;
+      creep.moveTo(new RoomPosition(nx, ny, creep.pos.roomName), { reusePath: 0 });
+      return;
     }
-    creep.moveTo(new RoomPosition(25, 25, targetRoom), { reusePath: 0 });
+    // Interior: let the pather route toward the target room (it reaches the exit
+    // edge and crosses the border via the atBorder branch above).
+    const mr = creep.moveTo(new RoomPosition(25, 25, targetRoom), { reusePath: 0 });
+    if (Game.time % 25 === 0) console.log('[CLM2] travel mr=' + mr + ' pos=' + creep.pos + ' ttl=' + creep.ticksToLive);
     return;
   }
 
+  // --- Arrived in the target room. ---
   if (!creep.memory.arrived) { console.log('[claimer] ARRIVED ' + targetRoom + ' at ' + creep.pos); creep.memory.arrived = true; }
   const c = creep.room.controller;
   if (!c) return;

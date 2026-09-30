@@ -646,6 +646,26 @@ function manageSpawns(room) {
     }
   }
 
+  // Harvester resilience: a <2-WORK harvester under-harvests the source (6/tick vs
+  // the 10/tick cap), so the bank climbs slowly and the room can't afford a claimer.
+  // Once the bank can fund a 2-WORK harvester (306) AND there is a surplus harvester
+  // above the needed functional count, recycle the weakest (<2 WORK) harvester so a
+  // stronger one takes its slot — lifting income to source saturation (10/tick).
+  if (room.energyAvailable >= 350 && typeof s.recycleCreep === 'function') {
+    const weakHr = Object.values(Game.creeps)
+      .filter(c => c.memory.role === 'harvester' && c.room.name === room.name &&
+        c.body.filter(p => p.type === WORK).length < 2);
+    const roomHr = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
+    if (weakHr.length && roomHr.length > 1) {
+      weakHr.sort((a, b) => (a.ticksToLive || 0) - (b.ticksToLive || 0));
+      const victim = weakHr[0];
+      if (s.recycleCreep(victim) === OK) {
+        console.log('Econ: recycled weak harvester', victim.name, victim.body.filter(p => p.type === WORK).length + 'W -> stronger, energy', room.energyAvailable);
+        return;
+      }
+    }
+  }
+
   // Conserve: hold ALL spawns while starving, banking for the role the room needs
   // next so a replaceable worker doesn't steal the energy meant for it:
   //  - a functional harvester nearing death that can't yet be replaced, or
