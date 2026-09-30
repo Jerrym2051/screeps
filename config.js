@@ -723,7 +723,7 @@ function manageSpawns(room) {
   const cE = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
   if (!needRescue && cE >= 1500 && room.energyAvailable >= 400 && typeof s.recycleCreep === 'function') {
     const liveHaulers = Object.values(Game.creeps).filter(c => c.memory.role === 'hauler' && c.room.name === room.name);
-    const smallHaulers = liveHaulers.filter(c => c.body.filter(p => p.type === CARRY).length < 3 && c.body.length >= 2);
+    const smallHaulers = liveHaulers.filter(c => c.body.filter(p => p.type === CARRY).length < 2 && c.body.length >= 2);
     if (smallHaulers.length && liveHaulers.length >= 2) {
       const victim = smallHaulers
         .sort((a, b) => a.body.filter(p => p.type === CARRY).length - b.body.filter(p => p.type === CARRY).length
