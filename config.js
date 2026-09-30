@@ -282,9 +282,9 @@ function getTargets(room) {
     // instead of just one (the old 3-haul limit left the 2nd source overflowing to drops).
     const harvesterWork = Object.values(Game.creeps)
       .filter(cr => cr.room && cr.room.name === room.name)
-      .reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p === WORK).length : 0), 0)
+      .reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p.type === WORK).length : 0), 0)
       + Object.values(Game.creeps).filter(c => c.memory.role === 'remoteharvester')
-        .reduce((n, c) => n + c.body.filter(p => p === WORK).length, 0);
+        .reduce((n, c) => n + c.body.filter(p => p.type === WORK).length, 0);
     targets.hauler = filled > 0 ? Math.min(4, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
     // Expansion: claim the room directly to the east (the chosen expansion
     // direction). Field at most one claimer per target, and only when the home
