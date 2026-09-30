@@ -24,21 +24,28 @@ module.exports = function (creep) {
                      (dir === BOTTOM && creep.pos.y === 49);
 
     if (atBorder && dir > 0) {
-      // Try to cross at the current border tile. move(dir) is the cross primitive;
-      // if the landing tile in the target room is terrain-wall, the cross is rejected
-      // at resolution (move returns OK but the creep stays), so scan along the border
-      // for an open exit column and retry.
-      const beforeRoom = creep.pos.roomName;
-      const r = creep.move(dir);
-      if (Game.time % 5 === 0) console.log('[CLM2] border ' + beforeRoom + '(' + creep.pos.x + ',' + creep.pos.y + ') move(' + dir + ')=' + r + ' ->' + creep.pos.roomName + ' b=' + creep.body.map(p => p.type).join(''));
-      if (creep.pos.roomName === targetRoom) return;        // crossed!
-      if (r === ERR_TIRED) return;
-      // Cross failed at this y: move along the border to the next candidate y.
-      if (!creep.memory.scanY) creep.memory.scanY = 25;        // center y (most exits open)
-      if (Math.abs(creep.pos.y - creep.memory.scanY) > 1) {
-        creep.moveTo(new RoomPosition(creep.pos.x, creep.memory.scanY, creep.pos.roomName), { reusePath: 0 });
+      // A creep issues only ONE move intent per tick, so we alternate: on a
+      // "cross" tick we attempt creep.move(dir); on a "scan" tick we nudge the
+      // creep along the border (north/south) to the next candidate exit column.
+      // Cross-attempt move(dir)=0 (OK) but no movement means the landing tile in
+      // the neighbor is terrain-wall at this y — that is why we scan y.
+      if (creep.memory.crossTick) {
+        const beforeRoom = creep.pos.roomName;
+        const r = creep.move(dir);
+        if (Game.time % 5 === 0) console.log('[CLM2] border X ' + beforeRoom + '(' + creep.pos.x + ',' + creep.pos.y + ') move(' + dir + ')=' + r + ' ->' + creep.pos.roomName + ' b=' + creep.body.map(p => p.type).join(''));
+        if (creep.pos.roomName === targetRoom) return;        // crossed into E47S42
+        if (r === ERR_TIRED) return;
+        creep.memory.crossTick = false;                       // next tick: scan y
       } else {
-        creep.memory.scanY = 5 + ((creep.memory.scanY + 9) % 40);  // next candidate column
+        if (!creep.memory.scanY) creep.memory.scanY = 25;     // center y (most exits open)
+        let scanDir = creep.pos.y < creep.memory.scanY ? BOTTOM : TOP;
+        if (Math.abs(creep.pos.y - creep.memory.scanY) <= 1) {
+          creep.memory.scanY = 5 + ((creep.memory.scanY + 9) % 40);  // next candidate column
+          scanDir = creep.pos.y < creep.memory.scanY ? BOTTOM : TOP;
+        }
+        const sr = creep.move(scanDir);
+        if (Game.time % 5 === 0) console.log('[CLM2] border S ' + creep.pos.roomName + '(' + creep.pos.x + ',' + creep.pos.y + ') move(' + scanDir + ')=' + sr + ' scanY=' + creep.memory.scanY);
+        creep.memory.crossTick = true;                        // next tick: cross-attempt
       }
       return;
     }
