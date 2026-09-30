@@ -242,7 +242,11 @@ function placeTowers(room) {
   const spawn = room.find(FIND_MY_SPAWNS)[0];
   if (!spawn) return;
   let built = 0;
-  for (const [dx, dy] of [[0,0],[0,1],[1,0],[0,-1],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+  // isSpawnClear rejects the 3x3 ring around the spawn (SPAWN_CLEAR_RADIUS=1), so a
+  // tower must be sited at radius 2. A tower covers the whole room, so a radius-2
+  // tile is fine and actually leaves the spawn approach clear for logistics.
+  const towerOffsets = [[2,0],[0,2],[-2,0],[0,-2],[2,1],[-2,1],[2,-1],[-2,-1],[1,2],[-1,2],[1,-2],[-1,-2],[2,2],[-2,2],[2,-2],[-2,-2]];
+  for (const [dx, dy] of towerOffsets) {
     const pos = new RoomPosition(spawn.pos.x + dx, spawn.pos.y + dy, room.name);
     if (makeSite(pos, STRUCTURE_TOWER, room) === OK) {
       built++;
