@@ -24,6 +24,7 @@ module.exports = function (creep) {
   if (!target) { creep.suicide(); return; }
   const full = creep.store.getFreeCapacity(RESOURCE_ENERGY) === 0;
   const carrying = creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0;
+  if (Game.time % 25 === 0) console.log('[RHDIAG] ' + (creep.name||'?') + ' @' + creep.pos + ' carry=' + creep.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + creep.store.getCapacity(RESOURCE_ENERGY) + ' full=' + full + ' tgt=' + target + ' dirT=' + (creep.memory.targetRoom) + ' hm=' + exitDirTo(home, target) + '/' + exitDirTo(target, home));
 
   // HOME: deposit, then (if empty) head toward the target room.
   if (creep.room.name === home) {
