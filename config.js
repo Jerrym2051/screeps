@@ -450,6 +450,7 @@ function manageSpawns(room) {
   if (functionalHarvesterCount > 0) Memory._crisisHarvester = false;
 
   const targets = getTargets(room);
+  const srcCount = room.find(FIND_SOURCES).length;
   const controller = room.controller;
   const stage = getRoomStage(room);
   const counts = {};
@@ -762,9 +763,13 @@ function manageSpawns(room) {
      // Recovery mode: below a 500 bank this 1-source economy can't sustain both
      // income and drain roles — each upgrader/builder spawn (~250-300) crashes the
      // bank back to ~110, so harvesters/haulers never reach the 2-WORK/2-CARRY
-     // bodies needed to climb out. Field only the income backbone until bank>=500.
-      if (role === 'looter') continue; // drop-free room: a 505 looter body is pure upkeep drain
-      if (room.energyAvailable < 500 && role !== 'harvester' && role !== 'hauler') continue;
+      // bodies needed to climb out. Field only the income backbone until bank>=500.
+      // BUT a 1-source RCL1 bank (300 cap, no extensions until RCL2, which needs the
+      // upgrader the gate starves) NEVER reaches 500 -> permanent deadlock. On 2+ sources
+      // (~30/tick) the builder+upgrader are sustainable, so exempt them here; 1-source
+      // stays gated to avoid the old bank-crash death spiral.
+       if (role === 'looter') continue; // drop-free room: a 505 looter body is pure upkeep drain
+       if (room.energyAvailable < 500 && srcCount < 2 && role !== 'harvester' && role !== 'hauler') continue;
       // Defer claimers until the home tower exists: a 650 body on the 800-cap bank
       // dips it to ~150 and starves the 600-tower build. E47S42's reservation lasts
       // 5000 ticks (~83 min), so this pause is well within the grace window.
