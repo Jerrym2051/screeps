@@ -29,13 +29,23 @@ module.exports = function (creep) {
         .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY))[0]);
     if (bank) { if (creep.transfer(bank, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(bank, { reusePath: 5 }); return; }
 
-    // 2) Banks full: spill into the spawn-side overflow container closest to the
+    // 2) Banks full: fund the tower (defense + auto-repair) from surplus, only while
+    //    the bank stays healthy enough to keep the income backbone running. A tower
+    //    is a 1000-capacity sink, so never starve the spawn/extensions for it.
+    const tw = creep.room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (tw.length && creep.room.energyAvailable >= 400) {
+      const t = tw.sort((a, b) => a.store.getFreeCapacity(RESOURCE_ENERGY) - b.store.getFreeCapacity(RESOURCE_ENERGY))[0];
+      if (creep.transfer(t, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(t, { reusePath: 5 });
+      return;
+    }
+
+    // 3) Banks full: spill into the spawn-side overflow container closest to the
     //    spawn. Never into a buffer (== the bounce source).
     const spill = roomCont().filter(c => !isBuffer(c) && c.store.getFreeCapacity(RESOURCE_ENERGY) > 0 && c.id !== creep.memory.haulSrc)
       .sort((a, b) => a.pos.getRangeTo(spawn) - b.pos.getRangeTo(spawn))[0];
     if (spill) { if (creep.transfer(spill, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spill, { reusePath: 5 }); return; }
 
-    // 3) No bank room and nowhere to spill: hold near the spawn and wait for a
+    // 4) No bank room and nowhere to spill: hold near the spawn and wait for a
     //    builder/upgrader to create headroom. Dropping here only feeds looter churn.
     if (spawn && creep.pos.getRangeTo(spawn) > 1) creep.moveTo(spawn, { reusePath: 5 });
     return;
