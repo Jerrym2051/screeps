@@ -33,20 +33,16 @@ module.exports = function (creep) {
                      (dir === BOTTOM && creep.pos.y === 49);
 
     if (atBorder && dir > 0) {
-      // One move intent per tick: alternate moveTo(landing) and move(dir) and log each.
-      if (!creep.memory.cx) creep.memory.cx = 0;
-      const phase = creep.memory.cx % 2;
-      if (phase === 0) {
-        const lg = landing(dir, creep.pos.y, targetRoom);      // border landing tile IN target room
-        const mr = creep.moveTo(lg, { reusePath: 0 });
-        if (creep.pos.roomName === targetRoom) { console.log('[claimer] CROSSED ' + targetRoom + ' via moveTo(landing) at ' + creep.pos); return; }
-        if (Game.time % 3 === 0) console.log('[CLM2] L ' + creep.pos + ' moveTo(' + lg.x + ',' + lg.y + ',' + lg.roomName + ')=' + mr + ' ->' + creep.pos.roomName);
-      } else {
-        const r = creep.move(dir);
-        if (creep.pos.roomName === targetRoom) { console.log('[claimer] CROSSED ' + targetRoom + ' via move(' + dir + ') at ' + creep.pos); return; }
-        if (Game.time % 6 === 0) console.log('[CLM2] F ' + creep.pos + ' move(' + dir + ')=' + r + ' ->' + creep.pos.roomName + ' b=' + creep.body.map(p => p.type).join(''));
+      // Direct cross: move(dir) is the only reliable cross tool here (the pather
+      // no-ops moveTo on unseen/interior targets). Step the border every tick
+      // until the pos flips into targetRoom.
+      const r = creep.move(dir);
+      if (creep.pos.roomName === targetRoom) {
+        console.log('[claimer] CROSSED ' + targetRoom + ' via move(' + dir + ') at ' + creep.pos);
+        delete creep.memory.cx;
+        return;
       }
-      creep.memory.cx++;
+      if (Game.time % 4 === 0) console.log('[CLM2] border ' + creep.pos + ' move(' + dir + ')=' + r + ' ->' + creep.pos.roomName);
       return;
     }
 
@@ -65,17 +61,25 @@ module.exports = function (creep) {
     if (creep.memory.claimPhase === 'reserve') {
       const rv = creep.reserveController(c);
       if (rv === 0) console.log('[claimer] RESERVED ' + targetRoom + ' at ' + creep.pos);
-      console.log('[CLAIM3] reserve='+rv+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' ERR_NIN='+ERR_NOT_IN_RANGE+' ERR_IVT='+ERR_INVALID_TARGET+' ERR_NBP='+ERR_NO_BODYPART+' ERR_NOTF='+ERR_NOT_FOUND+' ERR_BUSY='+ERR_BUSY);
-      creep.memory.claimPhase = 'claim';
-    } else {
-      const r = creep.claimController(c);
-      if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
-      console.log('[CLAIM3] claim='+r+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' pos='+creep.pos+' cpos='+c.pos+' ERR_NOT_ALLOWED='+ERR_NOT_ALLOWED+' ERR_TIRED='+ERR_TIRED+' ERR_NOT_OWNER='+ERR_NOT_OWNER);
-      creep.memory.claimPhase = 'reserve';
-    }
-    creep.moveTo(c, { reusePath: 3 });
-  } else {
-    const r = creep.reserveController(c);
-    if (r === ERR_NOT_IN_RANGE) creep.moveTo(c, { reusePath: 5 });
-  }
+       console.log('[CLAIM3] reserve='+rv+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv));
+       creep.memory.claimPhase = 'claim';
+     } else {
+       const r = creep.claimController(c);
+       if (r === 0) console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos);
+       console.log('[CLAIM3] claim='+r+' range='+c.pos.getRangeTo(creep)+' hasC='+hasC+' rsv='+JSON.stringify(rsv)+' pos='+creep.pos);
+       creep.memory.claimPhase = 'reserve';
+     }
+     // The pather no-ops moveTo inside the target room; step directly toward the
+     // controller until in range, then let claimController/reserveController fire.
+     if (creep.pos.getRangeTo(c) > 1) {
+       const d = creep.pos.getDirectionTo(c);
+       if (d) creep.move(d);
+     }
+   } else {
+     const r = creep.reserveController(c);
+     if (r === ERR_NOT_IN_RANGE) {
+       const d = creep.pos.getDirectionTo(c);
+       if (d) creep.move(d);
+     }
+   }
 };
