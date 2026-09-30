@@ -33,7 +33,13 @@ module.exports = function (creep) {
         filter: s => (s.structureType === STRUCTURE_CONTAINER || s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
       });
       if (dest) { if (creep.transfer(dest, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(dest, { reusePath: 5 }); return; }
-      // buffers full: hold in place rather than wander (saves ticks for a re-deposit next tick)
+      // Buffers full (bank + containers at cap): drop near the spawn so a hauler/looter
+      // can pick it up later and let the remote-harvester re-cross. Holding still full
+      // stalled it on the landing. (Excess is real: 2 sources outpace RCL3 drains; the
+      // spill/looter absorbs it until RCL4 scales consumption up.)
+      const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
+      if (spawn && creep.pos.getRangeTo(spawn) > 1) { creep.moveTo(spawn, { reusePath: 5 }); return; }
+      creep.drop(RESOURCE_ENERGY);
       return;
     }
     const dir = exitDirTo(home, target);

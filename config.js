@@ -277,10 +277,15 @@ function getTargets(room) {
     // haulers are built and the containers stay full while harvesters overflow into
     // dropped energy. Harvest = ~2 energy/WORK/tick, and one hauler (c.50 carry,
     // ~10-tick round trip) lifts ~5/tick, so one hauler per ~5 WORK-harvest.
-    const harvesterWork = (Object.values(Game.creeps).filter(cr => cr.room && cr.room.name === room.name).reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p === WORK).length : 0), 0));
-    // Floor of 2: one source (~10/tick) needs 2 haulers to drain it even with small
-    // bodies; cap 3. Sized by live harvester WORK so it scales up as bodies grow.
-    targets.hauler = filled > 0 ? Math.min(3, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
+    // Count WORK across harvesters AND the remote-harvester (its 2nd source feeds the
+    // same source-container drain), so the hauler backbone scales to empty 2 sources
+    // instead of just one (the old 3-haul limit left the 2nd source overflowing to drops).
+    const harvesterWork = Object.values(Game.creeps)
+      .filter(cr => cr.room && cr.room.name === room.name)
+      .reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p === WORK).length : 0), 0)
+      + Object.values(Game.creeps).filter(c => c.memory.role === 'remoteharvester')
+        .reduce((n, c) => n + c.body.filter(p => p === WORK).length, 0);
+    targets.hauler = filled > 0 ? Math.min(4, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
     // Expansion: claim the room directly to the east (the chosen expansion
     // direction). Field at most one claimer per target, and only when the home
     // bank has recovered (>=400) so the claim doesn't starve RCL3 operations
