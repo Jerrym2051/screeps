@@ -399,7 +399,8 @@ function reportStatus(room) {
     const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.pos + '/ttl=' + x.ticksToLive + '/fat=' + x.fatigue);
     const e47 = Game.rooms.E47S42;
     const e47info = e47 ? 'vis cl' + (e47.controller && e47.controller.my ? 'Y' : 'N') + ' rcl' + (e47.controller ? e47.controller.level : 0) : 'unseen stage=' + JSON.stringify((Memory.rooms.E47S42 && Memory.rooms.E47S42.stage) || 'none');
-    console.log('[CLM] claimer=[' + cl.join(',') + '] E47S42=' + e47info);
+    const fexit = Game.rooms.E46S42 ? Game.rooms.E46S42.findExitTo('E47S42') : 'n/a';
+    console.log('[CLM] claimer=[' + cl.join(',') + '] E47S42=' + e47info + ' findExitTo=' + fexit);
   }
 }
 
