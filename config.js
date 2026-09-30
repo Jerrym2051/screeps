@@ -395,7 +395,7 @@ function reportStatus(room) {
     const bank = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION }).reduce((n, s) => n + s.store.getUsedCapacity(RESOURCE_ENERGY), 0);
     const srcs = room.find(FIND_SOURCES).map(s => s.pos.x + ',' + s.pos.y + ':' + room.name);
     const conts = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).map(c => c.pos.x + ',' + c.pos.y + ':' + c.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + c.store.getCapacity(RESOURCE_ENERGY));
-    console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|'));
+    console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|') + ' TW=' + room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).map(t => t.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + t.store.getCapacity(RESOURCE_ENERGY)).join(',') + ' TS=' + room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_TOWER }).length);
     const fexit = Game.rooms.E46S42 ? Game.rooms.E46S42.findExitTo('E47S42') : 'na';
     const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.name + '@' + x.pos + '/ttl=' + x.ticksToLive + '/tgt=' + (x.memory.targetRoom||'-') + '/body=' + x.body.map(p => p.type).join(''));
     const e47 = Game.rooms.E47S42;
