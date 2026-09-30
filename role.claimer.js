@@ -1,6 +1,5 @@
-// role.claimer.js - travel to `memory.targetRoom`, claim its neutral controller,
-// then reserve it to hold ownership at RCL1 (no upgrade energy burned). Used for
-// the first eastward outpost claim.
+// role.claimer.js - travel to memory.targetRoom, claim its neutral controller,
+// then reserve it to hold ownership at RCL1. Cross into the unseen east room.
 function exitDirTo(fromName, toName) {
   const p = n => { const m = n.match(/^([WE])(\d+)([NS])(\d+)$/); return m ? { ew: m[1], ex: +m[2], ns: m[3], ny: +m[4] } : null; };
   const a = p(fromName), b = p(toName);
@@ -11,6 +10,8 @@ function exitDirTo(fromName, toName) {
   if (a.ny > b.ny) return TOP;
   return -1;
 }
+// candidate y values along the east exit column (the pather traversed these to reach (49,23))
+const SCAN_Y = [23, 20, 22, 24, 26, 28, 19, 21, 25, 27, 17];
 
 module.exports = function (creep) {
   const targetRoom = creep.memory.targetRoom;
@@ -24,28 +25,22 @@ module.exports = function (creep) {
                      (dir === BOTTOM && creep.pos.y === 49);
 
     if (atBorder && dir > 0) {
-      // A creep issues only ONE move intent per tick, so we alternate: on a
-      // "cross" tick we attempt creep.move(dir); on a "scan" tick we nudge the
-      // creep along the border (north/south) to the next candidate exit column.
-      // Cross-attempt move(dir)=0 (OK) but no movement means the landing tile in
-      // the neighbor is terrain-wall at this y — that is why we scan y.
-      if (creep.memory.crossTick) {
-        const beforeRoom = creep.pos.roomName;
+      // move() along exit tiles / across the border is a no-op on this server
+      // (returns OK, 0 movement). So: reposition to a walkable (49,y) via the PATHER
+      // (which does move along the exit), then attempt move(dir) to cross at that y.
+      if (!creep.memory.si) creep.memory.si = 0;
+      const crossTick = Game.time % 2 === 0;
+      const sy = SCAN_Y[creep.memory.si % SCAN_Y.length];
+
+      if (crossTick) {
         const r = creep.move(dir);
-        if (Game.time % 5 === 0) console.log('[CLM2] border X ' + beforeRoom + '(' + creep.pos.x + ',' + creep.pos.y + ') move(' + dir + ')=' + r + ' ->' + creep.pos.roomName + ' b=' + creep.body.map(p => p.type).join(''));
-        if (creep.pos.roomName === targetRoom) return;        // crossed into E47S42
-        if (r === ERR_TIRED) return;
-        creep.memory.crossTick = false;                       // next tick: scan y
+        if (creep.pos.roomName === targetRoom) { console.log('[claimer] CROSSED ' + targetRoom + ' at ' + creep.pos); return; }
+        if (Game.time % 3 === 0) console.log('[CLM2] X ' + creep.pos + ' y=' + creep.pos.y + ' move(' + dir + ')=' + r + ' ->' + creep.pos.roomName + ' body=' + creep.body.map(p => p.type).join(''));
+        creep.memory.si = (creep.memory.si + 1) % SCAN_Y.length; // didn't cross here: next y
       } else {
-        if (!creep.memory.scanY) creep.memory.scanY = 25;     // center y (most exits open)
-        let scanDir = creep.pos.y < creep.memory.scanY ? BOTTOM : TOP;
-        if (Math.abs(creep.pos.y - creep.memory.scanY) <= 1) {
-          creep.memory.scanY = 5 + ((creep.memory.scanY + 9) % 40);  // next candidate column
-          scanDir = creep.pos.y < creep.memory.scanY ? BOTTOM : TOP;
-        }
-        const sr = creep.move(scanDir);
-        if (Game.time % 5 === 0) console.log('[CLM2] border S ' + creep.pos.roomName + '(' + creep.pos.x + ',' + creep.pos.y + ') move(' + scanDir + ')=' + sr + ' scanY=' + creep.memory.scanY);
-        creep.memory.crossTick = true;                        // next tick: cross-attempt
+        // reposition to (49, sy) via pather (raw move along exits is a no-op)
+        const mr = creep.moveTo(new RoomPosition(49, sy, creep.pos.roomName), { reusePath: 0 });
+        if (Game.time % 3 === 0) console.log('[CLM2] S ' + creep.pos + ' ->y=' + sy + ' mr=' + mr + ' room=' + creep.pos.roomName);
       }
       return;
     }
@@ -63,7 +58,7 @@ module.exports = function (creep) {
   if (!c.my) {
     const r = creep.claimController(c);
     if (r === ERR_NOT_IN_RANGE) { creep.moveTo(c, { reusePath: 5 }); }
-    else if (r === 0) { console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos); }
+    else if (r === 0) { console.log('[claimer] claimed ' + targetRoom + ' at ' + Game.time + ' pos=' + creep.pos + ''); }
     else if (r < 0) { console.log('[claimer] claim err ' + r + ' at ' + creep.pos); }
   } else {
     const r = creep.reserveController(c);
