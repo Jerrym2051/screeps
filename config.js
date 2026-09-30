@@ -706,6 +706,28 @@ function manageSpawns(room) {
     }
   }
 
+  // Hauler upsize: the cold-start [CARRY,MOVE] body (cap 50, 1/tick) can't drain a
+  // saturated 2-source economy — the source containers overflow to drops and the
+  // bank never climbs high enough to ever afford a bigger one (a deadlock). When the
+  // bank is solidly full + not in a harvester crisis, force the SMALLEST hauler out
+  // (recycle if it's at the spawn for the body refund, else suicide it) so a bigger
+  // (3-CARRY, cap 150+, 2/tick) hauler spawns and actually lifts the harvest. Keep at
+  // least 2 haulers so containers still drain while the new one builds.
+  if (!needRescue && room.energyAvailable >= 550 && typeof s.recycleCreep === 'function') {
+    const liveHaulers = Object.values(Game.creeps).filter(c => c.memory.role === 'hauler' && c.room.name === room.name);
+    const smallHaulers = liveHaulers.filter(c => c.body.filter(p => p.type === CARRY).length < 3 && c.body.length >= 2);
+    if (smallHaulers.length && liveHaulers.length >= 2) {
+      const victim = smallHaulers
+        .sort((a, b) => a.body.filter(p => p.type === CARRY).length - b.body.filter(p => p.type === CARRY).length
+          || (a.ticksToLive || 0) - (b.ticksToLive || 0))[0];
+      const c = victim.body.filter(p => p.type === CARRY).length;
+      const r = s.recycleCreep(victim);
+      if (r !== OK) { victim.suicide(); }
+      console.log('Econ: ' + (r === OK ? 'recycled' : 'suicided') + ' small hauler', victim.name, 'C=' + c, '-> bigger, energy', room.energyAvailable);
+      return;
+    }
+  }
+
   // Conserve: hold ALL spawns while starving, banking for the role the room needs
   // next so a replaceable worker doesn't steal the energy meant for it:
   //  - a functional harvester nearing death that can't yet be replaced, or
