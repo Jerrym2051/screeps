@@ -16,20 +16,34 @@ const roles = {
 
 // Get all rooms we need to manage, sorted by priority
 function getManagedRooms() {
-  const owned = config.getOwnedRooms();
-  // Also include outposts we have in memory but cant see yet
+  const rooms = config.getOwnedRooms();
+  // Visible rooms targeted by an en-route claimer must be managed too: once a claimer
+  // crosses into a new room it must be dispatched there (claim/reserve), so manage any
+  // visible room that a live creep is targeting, even if Memory.rooms hasn't staged it.
+  const targetRooms = new Set();
+  for (const name in Game.creeps) {
+    const t = Game.creeps[name].memory && Game.creeps[name].memory.targetRoom;
+    if (t) targetRooms.add(t);
+  }
+  for (const name of targetRooms) {
+    if (!rooms.some(r => r.name === name) && Game.rooms[name]) rooms.push(Game.rooms[name]);
+  }
+  // Also include outposts we have in memory but cant see yet (or that are visible)
   if (Memory.rooms) {
     for (const name in Memory.rooms) {
       const stage = Memory.rooms[name].stage;
       if (stage === 'outpost' || stage === 'expansion') {
-        if (!Game.rooms[name]) {
-          // We know about this room but cant see it - add a placeholder
-          owned.push({ name: name, controller: null, my: false, find: () => [] });
+        if (!rooms.some(r => r.name === name)) {
+          if (Game.rooms[name]) {
+            rooms.push(Game.rooms[name]);                       // visible outpost/expansion
+          } else {
+            rooms.push({ name: name, controller: null, my: false, find: () => [] }); // unseen placeholder
+          }
         }
       }
     }
   }
-  return owned;
+  return rooms;
 }
 
 module.exports.loop = function () {
