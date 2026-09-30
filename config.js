@@ -693,7 +693,8 @@ function manageSpawns(room) {
     // below guarantees the spawn never -6s and the post-spawn dip (cap-603) still
     // leaves enough buffered energy for harvesters to keep saturating the source.
     if (targets.claimerTarget && (counts.claimer || 0) === 0 &&
-        room.energyAvailable >= 700) {
+        room.energyAvailable >= 700 &&
+        room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).length) {
       const cbody = buildBody('claimer', room.energyAvailable);
       if (cbody.length && bodyCost(cbody) <= room.energyAvailable) {
         const result = s.createCreep(cbody, 'claimer' + Game.time, { role: 'claimer', targetRoom: targets.claimerTarget });
