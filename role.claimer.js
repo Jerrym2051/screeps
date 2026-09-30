@@ -17,30 +17,28 @@ module.exports = function (creep) {
   if (!targetRoom) return;
 
   if (creep.room.name !== targetRoom) {
-    const dir = exitDirTo(creep.room.name, targetRoom);
-    // At the room's border edge in the exit direction, drive the cross directly:
-    // moveTo(path to unseen room) returns -2 (no path) at the exit and never crosses,
-    // but move(exitDir) is the engine's cross-room primitive and crosses on the edge.
-    const atBorder = (dir === RIGHT && creep.pos.x === 49) ||
-                     (dir === LEFT && creep.pos.x === 0) ||
-                     (dir === TOP && creep.pos.y === 0) ||
-                     (dir === BOTTOM && creep.pos.y === 49);
-    if (atBorder && dir > 0) {
-      const r = creep.move(dir);
-      if (Game.time % 5 === 0) console.log('[CLM2] CROSS ' + creep.pos + ' move(' + dir + ')=' + r + ' room=' + creep.pos.roomName + ' ttl=' + creep.ticksToLive);
-      if (r === OK) return;          // crossed into the target room
-      if (r === ERR_TIRED) return;   // fatigued, retry next tick
-      // Cross blocked at this border y (wall/exit terrain): scramble along the exit
-      // to the next walkable border tile and retry.
-      const ny = (creep.pos.y + (Game.time % 7) + 1) % 50;
-      const nx = creep.pos.x;
-      creep.moveTo(new RoomPosition(nx, ny, creep.pos.roomName), { reusePath: 0 });
+    // Cross into an unseen adjacent room. moveTo(RoomPosition in unseen room) returns
+    // -2 at the border (the pather can't resolve the unseen room's terrain, so it never
+    // emits the border-cross step). move(exitDir) is a no-op for cross-room on this
+    // server (returns OK, 0 movement). So plan the path OURSELF with PathFinder,
+    // treating the unseen target room as plain walkable terrain via roomCallback; that
+    // yields a path that crosses the exit, which moveByPath then executes.
+    const res = PathFinder.search(creep.pos, { pos: new RoomPosition(25, 25, targetRoom), range: 1 }, {
+      maxRooms: 2,
+      maxCost: 1000,
+      roomCallback: function (roomName) {
+        if (roomName === creep.pos.roomName) return undefined;      // real terrain for home
+        return new PathFinder.CostMatrix();                         // unseen room: all walkable
+      }
+    });
+    if (res.path.length >= 2) {
+      const r = creep.moveByPath(res.path);
+      if (Game.time % 5 === 0) console.log('[CLM2] PF len=' + res.path.length + ' mbp=' + r + ' pos=' + creep.pos + ' next=' + res.path[1] + ' ->room=' + creep.pos.roomName);
       return;
     }
-    // Interior: let the pather route toward the target room (it reaches the exit
-    // edge and crosses the border via the atBorder branch above).
+    // No custom path: fall back to a plain path toward the target room.
     const mr = creep.moveTo(new RoomPosition(25, 25, targetRoom), { reusePath: 0 });
-    if (Game.time % 25 === 0) console.log('[CLM2] travel mr=' + mr + ' pos=' + creep.pos + ' ttl=' + creep.ticksToLive);
+    if (Game.time % 5 === 0) console.log('[CLM2] PF-empty mr=' + mr + ' pos=' + creep.pos);
     return;
   }
 
@@ -56,5 +54,6 @@ module.exports = function (creep) {
   } else {
     const r = creep.reserveController(c);
     if (r === ERR_NOT_IN_RANGE) creep.moveTo(c, { reusePath: 5 });
+    else if (r === 0) { /* reserved */ }
   }
 };
