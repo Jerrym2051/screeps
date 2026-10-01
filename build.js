@@ -1,8 +1,13 @@
 // build.js - idempotent construction planner (containers, roads, extensions, storage, ramparts, towers, observer, links)
-const DIRS = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[-1,1],[1,-1],[1,1]];
+const cache = require('cache');
+const DIRS = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,1],[1,-1],[1,1]];
 const SPAWN_CLEAR_RADIUS = 1; // leave the 8 tiles adjacent to the spawn empty for creep logistics
 
-function getSpawn(room) { return room.find(FIND_MY_SPAWNS)[0]; }
+// Fixed road waypoints the spine routing doesn't cover but that are strategic
+// chokepoints/crossing tiles that must always have a road (even on swamp).
+const FIXED_ROAD_POINTS = ['16,16'];
+
+function getSpawn(room) { return cache.spawn(room); }
 
 function isSpawnClear(pos, room) {
   const spawn = getSpawn(room);
@@ -14,7 +19,8 @@ function makeSite(pos, type, room) {
   if (!pos) return ERR_INVALID_ARGS;
   if (!isSpawnClear(pos, room)) return -4;
   if (pos.lookFor(LOOK_STRUCTURES).length || pos.lookFor(LOOK_CONSTRUCTION_SITES).length) return -4;
-  return room.createConstructionSite(pos, type);
+  const res = room.createConstructionSite(pos, type);
+  return res;
 }
 
 function placeContainers(room) {
@@ -105,9 +111,9 @@ function placeContainers(room) {
   // container is itself a one-time energy sink. Placed near the SPAWN, not the
   // source, so placeContainers' source-adoption cleanup can't prune them as
   // "redundant" source sites (which caused the place/remove churn).
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
-  const contUsable = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).length;
-  const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
+  const spawn = cache.spawn(room);
+  const contUsable = cache.structures(room, STRUCTURE_CONTAINER).filter(s => s.my || !s.owner).length;
+  const contSites = cache.sites(room, STRUCTURE_CONTAINER).length;
   const max = 5 - (contUsable + contSites);
   // RCL1 cold-start: NO bank buffer. The income-gate keeps us at the 300 spawn cap
   // (extensions don't exist until RCL2), and every 5000-build HP the builders spend on
@@ -147,11 +153,12 @@ function ring(center, r) {
 }
 
 function placeExtensions(room) {
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  const spawn = cache.spawn(room);
+  if (!spawn) return;
   const c = room.controller;
-  if (!spawn || !c || c.level < 2) return;
+  if (!c || c.level < 2) return;
   const max = c.level * 5;
-  const have = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTENSION }).length;
+  const have = cache.structures(room, STRUCTURE_EXTENSION).length;
   let need = max - have;
   if (need <= 0) return;
   // Scan outward past the road spine: the old radius 1–3 window is fully occupied by
@@ -225,8 +232,7 @@ function extendSpineToExtensions(room, desired, spinePositions) {
   // routed to the cached spine (not to whatever road happened to exist this tick), so
   // the desired set is stable and sites don't flicker in/out.
   if (!spinePositions || !spinePositions.length) return;
-  const nodes = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTENSION })
-    .concat(room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_EXTENSION }));
+  const nodes = cache.structures(room, STRUCTURE_EXTENSION).concat(cache.sites(room, STRUCTURE_EXTENSION));
   for (const e of nodes) {
     let near = false;
     for (const key of desired) {
@@ -254,7 +260,7 @@ function extendSpineToExtensions(room, desired, spinePositions) {
 // and source containers exist — a 2-lane road cuts creep travel in half and lets the
 // 1-MOVE workers move at full 2-MOVE body speed without zoning each other out.
 function placeRoads(room) {
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  const spawn = cache.spawn(room);
   const c = room.controller;
   // One-time cleanup: the previous generators laid a 3–5 tile-wide corridor. Wipe
   // every stale road site so the new true 2-lane spine (path + one fixed parallel side)
@@ -264,8 +270,7 @@ function placeRoads(room) {
   const rm = Memory.rooms[room.name];
   if (rm._roadGenVersion !== 3) {
     let removed = 0;
-    for (const s of room.find(FIND_CONSTRUCTION_SITES, {
-      filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
+    for (const s of cache.sites(room, STRUCTURE_ROAD)) {
       s.remove();
       removed++;
     }
@@ -283,7 +288,7 @@ function placeRoads(room) {
   });
   if (rm) rm._placeRoadsRan = { t: Game.time, bank: room.energyAvailable, srcC: srcContainers.length, lvl: c && c.level };
   if (!spawn || !c || c.level < 2 || srcContainers.length < 2 || room.energyAvailable < 300) return;
-  const sources = room.find(FIND_SOURCES);
+  const sources = cache.get(room, FIND_SOURCES, 'sources');
   if (!sources.length) return;
   // Anchor the spine at the source containers (walkable), not the source tiles, so
   // findPath can always produce a path. Three one-way legs form the spine:
@@ -314,14 +319,19 @@ function placeRoads(room) {
   // Lock in every road tile once it exists so pathfinder drift / creep traffic can't
   // make sites flicker in and out: the desired set only grows.
   const locked = new Set(rm._roadLocked || []);
-  for (const s of room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_ROAD })) locked.add(s.pos.x + ',' + s.pos.y);
-  for (const s of room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_ROAD })) locked.add(s.pos.x + ',' + s.pos.y);
+  for (const s of cache.structures(room, STRUCTURE_ROAD)) locked.add(s.pos.x + ',' + s.pos.y);
+  for (const s of cache.sites(room, STRUCTURE_ROAD)) locked.add(s.pos.x + ',' + s.pos.y);
   for (const key of desired) locked.add(key);
+  for (const fp of FIXED_ROAD_POINTS) {
+    const [x, y] = fp.split(',').map(Number);
+    if (x >= 1 && x <= 48 && y >= 1 && y <= 48 && room.getTerrain().get(x, y) !== TERRAIN_MASK_WALL) {
+      locked.add(fp);
+    }
+  }
   rm._roadLocked = Array.from(locked);
   // Prune only road sites that are neither locked nor on the intended spine+spurs.
-  for (const s of room.find(FIND_CONSTRUCTION_SITES, {
-    filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
-    if (!locked.has(s.pos.x + ',' + s.pos.y)) s.remove();
+  for (const s of cache.sites(room, STRUCTURE_ROAD)) {
+    if (s.my && !locked.has(s.pos.x + ',' + s.pos.y)) s.remove();
   }
   let laid = 0;
   for (const key of locked) {

@@ -17,6 +17,9 @@ const ROLE_PRIORITY = {
 };
 const allies = [];
 
+let _tgtTick = -1;
+const _tgtCache = {};
+
 function spawn(room) { return room.find(FIND_MY_SPAWNS)[0]; }
 
 function getOwnedRooms() {
@@ -190,6 +193,17 @@ function countRemoteSources(room) {
 }
 
 function getTargets(room) {
+  // Memoize per (room, tick): reportStatus + manageSpawns both call getTargets, and
+  // several callers read the result. Computing it once per tick avoids ~9 room.find
+  // calls per extra invocation.
+  if (_tgtTick !== Game.time) { _tgtTick = Game.time; for (const k in _tgtCache) delete _tgtCache[k]; }
+  if (_tgtCache[room.name]) return _tgtCache[room.name];
+  const targets = _computeTargets(room);
+  _tgtCache[room.name] = targets;
+  return targets;
+}
+
+function _computeTargets(room) {
   const sources = room.find(FIND_SOURCES);
   const controller = room.controller;
   const sites = room.find(FIND_CONSTRUCTION_SITES).length;

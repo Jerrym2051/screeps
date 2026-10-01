@@ -4,12 +4,14 @@ const config = require('config');
 // Per-tick cache: getHostiles is called from the main creep loop (once per creep),
 // from getHostilesNear (8 neighbor rooms), towers, and safe-mode — without a cache
 // that's a full hostile scan of ~9 rooms per creep per tick. Cache by room.
-let _hostileTick = -1;
+let _hostileTick = -1, _nearTick = -1;
 const _hostileCache = {};
+const _nearCache = {};
 function getHostiles(room) {
   if (_hostileTick !== Game.time) {
     _hostileTick = Game.time;
     for (const k in _hostileCache) delete _hostileCache[k];
+    for (const k in _nearCache) delete _nearCache[k];
   }
   if (_hostileCache[room.name]) return _hostileCache[room.name];
   const allies = config.allies || [];
@@ -116,14 +118,20 @@ function neighborRooms(room) {
   ].filter(n => n);
 }
 
-// getHostilesNear scans the creep's room and ALL 8 adjacent rooms.
+// getHostilesNear scans the creep's room and ALL 8 adjacent rooms, caching the
+// combined result for the current tick so the per-creep flee check in the main loop
+// doesn't re-scan 8 neighbor rooms for every worker.
 function getHostilesNear(creep) {
+  if (_nearTick !== Game.time) { _nearTick = Game.time; for (const k in _nearCache) delete _nearCache[k]; }
+  const roomName = creep.room.name;
+  if (_nearCache[roomName]) return _nearCache[roomName];
   let hostiles = getHostiles(creep.room);
   const neighbors = neighborRooms(creep.room);
   for (const name of neighbors) {
     const room = Game.rooms[name];
     if (room) hostiles = hostiles.concat(getHostiles(room));
   }
+  _nearCache[roomName] = hostiles;
   return hostiles;
 }
 
