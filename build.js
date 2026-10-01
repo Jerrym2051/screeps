@@ -193,12 +193,13 @@ function pave2Lane(room, fromPos, toPos) {
     // doesn't stack on a single tile (true 2-lane, not a 1-tile spine).
     if (i + 1 < path.length) {
       const nx = path[i + 1].x - p.x, ny = path[i + 1].y - p.y;
-      for (const [ox, oy] of pathPerp(nx, ny)) {
-        const qx = px + ox, qy = py + oy;
-        if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
-            room.getTerrain().get(qx, qy) !== TERRAIN_MASK_WALL) {
-          if (makeSite(new RoomPosition(qx, qy, room.name), STRUCTURE_ROAD, room) === OK) laid++;
-        }
+      // Single perpendicular side only: path tile + one offset = 2 lanes. Laying both
+      // sides produced a 3-tile-wide strip that stacked into 5+ lanes where legs crossed.
+      const [ox, oy] = pathPerp(nx, ny)[0];
+      const qx = px + ox, qy = py + oy;
+      if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
+          room.getTerrain().get(qx, qy) !== TERRAIN_MASK_WALL) {
+        if (makeSite(new RoomPosition(qx, qy, room.name), STRUCTURE_ROAD, room) === OK) laid++;
       }
     }
   }
@@ -213,6 +214,23 @@ function pave2Lane(room, fromPos, toPos) {
 function placeRoads(room) {
   const spawn = room.find(FIND_MY_SPAWNS)[0];
   const c = room.controller;
+  // One-time cleanup for the old generator: the previous pave2Lane laid both
+  // perpendicular sides, and the 5 overlapping legs stacked into up to 5 lanes.
+  // Wipe those stale road sites so the new 2-lane spine can start clean once the
+  // income gate opens.
+  if (!Memory.rooms) Memory.rooms = {};
+  if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
+  const rm = Memory.rooms[room.name];
+  if (rm._roadGenVersion !== 2) {
+    let removed = 0;
+    for (const s of room.find(FIND_CONSTRUCTION_SITES, {
+      filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
+      s.remove();
+      removed++;
+    }
+    rm._roadGenVersion = 2;
+    rm._roadCleanup = { t: Game.time, removed };
+  }
   // Allow roads at RCL2 (the old energyAvailable>=500 gate never fired: the bank is
   // capped at 300 until extensions exist, so roads were permanently starved). Gate
   // on the income containers being built instead so road sites never steal build
@@ -221,22 +239,20 @@ function placeRoads(room) {
     filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
       s.pos.findInRange(FIND_SOURCES, 1).length > 0,
   });
-  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._placeRoadsRan = { t: Game.time, bank: room.energyAvailable, srcC: srcContainers.length, lvl: c && c.level };
+  if (rm) rm._placeRoadsRan = { t: Game.time, bank: room.energyAvailable, srcC: srcContainers.length, lvl: c && c.level };
   if (!spawn || !c || c.level < 3 || srcContainers.length < 2 || room.energyAvailable < 300) return;
   const sources = room.find(FIND_SOURCES);
   if (!sources.length) return;
   const src1 = sources.find(s => s.pos.x < 25) || sources[0];
   const src2 = sources.find(s => s.pos.x >= 25) || sources[sources.length - 1];
-  // Five one-way legs only (NOT mirrored pairs): pave2Lane already lays a double tile
-  // per step (the path tile + one perpendicular offset), so a single pass is a true
-  // 2-lane spine. Mirroring A->B and B->A would stack to 4 lanes — that's what
-  // ballooned this to 91 sites last run. source1<->spawn<->controller<->source2.
+  // Three one-way legs form the spine: source1 -> spawn -> controller -> source2.
+  // Each pave2Lane pass is now a true 2-tile strip (path tile + one side). The old
+  // extra src1/src2 -> controller legs overlapped near the spawn/controller and
+  // ballooned the road width to 5 lanes; the spine covers all four nodes.
   const legs = [
     [src1.pos, spawn.pos],
-    [src2.pos, spawn.pos],
     [spawn.pos, c.pos],
-    [src1.pos, c.pos],
-    [src2.pos, c.pos],
+    [c.pos, src2.pos],
   ];
   let total = 0;
   for (const [a, b] of legs) total += pave2Lane(room, a, b);
