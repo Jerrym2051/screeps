@@ -160,25 +160,6 @@ module.exports = function (creep) {
   } else {
     // Full — dump.
     const dump = findDumpTarget(creep, source);
-    // RCL1 cold-start: the spawn caps at 300 (no extensions until RCL2, which needs
-    // the upgrader the gate starves of energy), so a full harvester's energy would
-    // rot there once the spawn is full. Build the source's own container site in
-    // place instead — we're already on the source, so this finishes the
-    // income-unlock container faster than the 1-MOVE builders walking from the spawn
-    // to the far source site. SAFE: only fires when the spawn is completely full
-    // (getFreeCapacity===0), so no deposit-at-spawn is skipped — harvesters still
-    // top the spawn whenever it isn't full, preserving the spawn cycle. Energy that
-    // would rot at the 300-cap instead pools in a 1500-cap container.
-    if (dump && dump.structureType === STRUCTURE_SPAWN && dump.store &&
-        dump.store.getFreeCapacity(RESOURCE_ENERGY) === 0) {
-      const site = source && creep.pos.findInRange(FIND_CONSTRUCTION_SITES, 4,
-        { filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
-      if (site) {
-        if (creep.build(site) !== ERR_NOT_IN_RANGE) return;
-        creep.moveTo(site, { reusePath: 5 });
-        return;
-      }
-    }
     if (!dump) {
       // Containers full + hauler running + bank healthy: idle on a free tile beside
       // the source (by the containers) so we dump the instant a hauler frees space,
