@@ -139,8 +139,15 @@ function buildBody(role, budget) {
   // builder. Keep the 1-WORK/1-CARRY body only as the low-energy emergency floor.
   if (role === 'harvester') {
     if (budget < 200) return [];
-    if (budget >= 340) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C (energy 350)
-    else if (budget >= 290) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C (energy 300)
+    // On this server WORK=100, so a 2-WORK harvester body costs 300. At RCL1 the bank
+    // hard-caps at 300 (no extensions until RCL2), so spawning a 300-cost body drains the
+    // bank to 0 — the cold-start crash (300->0) seen right after the container built.
+    // Keep 2-WORK bodies gated to RCL2+ (bank >= 550 => a 300 body leaves a >=250 buffer);
+    // below that, the 1-WORK floor drains 300->100 (recoverable) and still saturates a
+    // 10/tick source once the on-site container exists. Existing 2-WORK harvests live
+    // out their TTL for the income they're carrying; only new spawns are capped here.
+    if (budget >= 600) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C (energy 350)
+    else if (budget >= 550) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C (energy 300)
     else { b.push(WORK, CARRY, MOVE); budget -= 200; }                            // 1W1C emergency floor
     while (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
     return b;
@@ -784,6 +791,11 @@ function manageSpawns(room) {
     // harvesters/builder up to 2-WORK automatically as energyAvailable rises.
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
+    // Reserve guard: never drain the bank below 100. At RCL1 the bank hard-caps at 300, so
+    // a 300-cost body (or a queued second spawn) drains it to 0 — the cold-start crash
+    // that stalled the source containers. Skip this spawn if the body would leave the
+    // bank below the recovery floor (income needs ~100 banked to fund the next body).
+    if (bodyCost(body) > room.energyAvailable - 100) continue;
     // Pre-container: don't replace a lost harvester with another 1-WORK body while
     // functional harvesters still run — a 1-WORK spawn (~200) just resets the bank
     // to ~0 and perpetuates the carry-trip thrash, blocking the climb to 290+.
