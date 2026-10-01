@@ -300,20 +300,27 @@ function placeRoads(room) {
   // not already adjacent to the road network. This keeps roads limited to routes
   // between important structures instead of tiling the whole room.
   extendSpineToExtensions(room, desired, spinePositions);
-  // Prune any road site outside the intended spine + extension spurs.
+  // Lock in every road tile once it exists so pathfinder drift / creep traffic can't
+  // make sites flicker in and out: the desired set only grows.
+  const locked = new Set(rm._roadLocked || []);
+  for (const s of room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_ROAD })) locked.add(s.pos.x + ',' + s.pos.y);
+  for (const s of room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_ROAD })) locked.add(s.pos.x + ',' + s.pos.y);
+  for (const key of desired) locked.add(key);
+  rm._roadLocked = Array.from(locked);
+  // Prune only road sites that are neither locked nor on the intended spine+spurs.
   for (const s of room.find(FIND_CONSTRUCTION_SITES, {
     filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
-    if (!desired.has(s.pos.x + ',' + s.pos.y)) s.remove();
+    if (!locked.has(s.pos.x + ',' + s.pos.y)) s.remove();
   }
   let laid = 0;
-  for (const key of desired) {
+  for (const key of locked) {
     const [x, y] = key.split(',').map(Number);
     if (x >= 1 && x <= 48 && y >= 1 && y <= 48 &&
         room.getTerrain().get(x, y) !== TERRAIN_MASK_WALL) {
       if (makeSite(new RoomPosition(x, y, room.name), STRUCTURE_ROAD, room) === OK) laid++;
     }
   }
-  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid, desired: desired.size };
+  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid, locked: locked.size };
 }
 
 
