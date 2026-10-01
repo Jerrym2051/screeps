@@ -126,8 +126,16 @@ module.exports.loop = function () {
         }
       }
       const fn = roles[creep.memory.role];
+      let _cb = 0;
+      if (_prof) _cb = Game.cpu.getUsed();
       if (fn) fn(creep);
       else creep.suicide();
+      if (_prof) {
+        const d = Game.cpu.getUsed() - _cb;
+        if (!Memory._creepProf) Memory._creepProf = [];
+        Memory._creepProf.push(creep.name + ':' + (creep.memory.role || '?') + ':' + Math.round(d * 100) / 100 + ':' + Math.round((creep.pos.x) * 100) + ',' + Math.round(creep.pos.y * 100));
+        if (Memory._creepProf.length > 60) Memory._creepProf.shift();
+      }
     }
     if (_prof) _prof.marks.push('creepEnd:' + Game.cpu.getUsed());
 
