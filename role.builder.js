@@ -41,6 +41,19 @@ module.exports = function (creep) {
   // then mine the source. Withdrawing from the container (not the spawn) is what
   // keeps spawn energy available to actually build a hauler during the cold-start.
   if (used === 0) {
+    // Cold-start accelerator: if we're adjacent to a source and our target is that
+    // source's container site, self-fuel by harvesting it. No 90-tick round-trip to
+    // the spawn for 50 energy, and the source's output feeds the build directly
+    // instead of draining the 300-cap bank the spawn is fighting for. A 1-WORK
+    // builder harvests 10 energy/tick and builds 10 build/tick for 5 energy/tick,
+    // so it sustains a steady on-site build cycle — this is what cracks the near
+    // source container (the income unlock) instead of letting 1-MOVE builders
+    // crawl to the spawn between every 50-energy withdrawal.
+    const srcNear = site ? site.pos.findInRange(FIND_SOURCES, 2)[0] : null;
+    if (srcNear && creep.pos.inRangeTo(srcNear, 1)) {
+      if (creep.harvest(srcNear) === ERR_NOT_IN_RANGE) creep.moveTo(srcNear, { reusePath: 5 });
+      return;
+    }
     const cont = creep.pos.findClosestByRange(FIND_STRUCTURES, {
       filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
         s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
