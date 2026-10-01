@@ -125,9 +125,18 @@ module.exports = function (creep) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
 
-  // Check if home room is blocked — look for remote source
-  const safeSources = creep.room.find(FIND_SOURCES).filter(s => !defense.isSourceDangerous(s, 3));
-  const source = safeSources.length ? creep.pos.findClosestByPath(safeSources) : null;
+  // Pick THIS creep's assigned source (set by the recruiter's min-count rule) so
+  // harvesters spread across BOTH sources instead of all crowding the one closest to
+  // the spawn. Without this, findClosestByPath sends every harvester to the near source,
+  // leaving the far source unmanned (half the income gone) while the recruiter keeps
+  // spawning "far" harvesters that never reach it — churning the bank with no room for
+  // an upgrader. Fall back to closest only if the assigned source is gone/dangerous.
+  const allSources = creep.room.find(FIND_SOURCES);
+  const safeSources = allSources.filter(s => !defense.isSourceDangerous(s, 3));
+  let source = null;
+  const assigned = creep.memory.sourceId && Game.getObjectById(creep.memory.sourceId);
+  if (assigned && safeSources.includes(assigned)) source = assigned;
+  else if (safeSources.length) source = creep.pos.findClosestByPath(safeSources);
   const remoteSource = !source ? findRemoteSource(creep) : null;
   const targetSource = source || remoteSource;
   const isRemote = !!remoteSource;
