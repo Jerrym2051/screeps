@@ -572,14 +572,24 @@ function manageSpawns(room) {
   // the surplus down to target NOW (highest-TTL first => max energy refund) instead of
   // waiting for natural death. NEVER during a harvester crisis (needRescue): those
   // creeps fund the income and must not be shed to pay for themselves.
-  if (!needRescue && typeof s.recycleCreep === 'function' && (counts.upgrader || 0) > (targets.upgrader || 0)) {
+  if (!needRescue && (counts.upgrader || 0) > (targets.upgrader || 0)) {
     const upgs = Object.values(Game.creeps)
       .filter(c => c.memory.role === 'upgrader' && c.room.name === room.name && c.body.length >= 2)
       .sort((a, b) => (b.ticksToLive || 0) - (a.ticksToLive || 0)); // highest TTL first (max refund)
     const victim = upgs[0];
-    if (victim && s.recycleCreep(victim) === OK) {
-      console.log('Recycled surplus upgrader', victim.name, '(' + ((counts.upgrader || 0) - (targets.upgrader || 0)) + ' over target), bank', room.energyAvailable);
-      return;
+    if (victim) {
+      const r = typeof s.recycleCreep === 'function' ? s.recycleCreep(victim) : -10;
+      if (r === OK) {
+        console.log('Recycled surplus upgrader', victim.name, '(' + ((counts.upgrader || 0) - (targets.upgrader || 0)) + ' over target), bank', room.energyAvailable);
+        return;
+      }
+      // Not adjacent to the spawn (or mid-spawn): flag the creep to walk back to the
+      // spawn; role.upgrader's recycle-walk will bring it in range, then s.recycleCreep
+      // succeeds next tick. Without this the 3 post-RCL2 upgraders park at source2
+      // (far from the spawn) and could never be culled — they sat there draining the
+      // source container forever and kept the bank below RCL3.
+      victim.memory.recycle = true;
+      if (Memory._debugRecruit) console.log('Shelved surplus upgrader', victim.name, 'to walk-to-spawn (recycleCreep rc=', r + ')');
     }
   }
 

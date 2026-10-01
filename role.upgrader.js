@@ -6,6 +6,16 @@
 module.exports = function (creep) {
   const c = creep.room.controller;
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
+  // Shelved by the recruiter: a surplus upgrader (over the target cap) that couldn't
+  // be recycled because it wasn't adjacent to the spawn. Roll it back to the spawn so
+  // s.recycleCreep succeeds next tick — without this, source1 income coming online
+  // (the far container) never lets the bank climb, because 3 upgraders keep draining
+  // the spawn-side container faster than 1 source feeds it.
+  if (creep.memory.recycle) {
+    if (spawn && creep.pos.isNearTo(spawn)) { spawn.recycleCreep(creep); }
+    else if (spawn) { creep.moveTo(spawn, { reusePath: 5 }); }
+    return;
+  }
   if (creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
     if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
     return;
