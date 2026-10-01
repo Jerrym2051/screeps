@@ -679,7 +679,7 @@ function manageSpawns(room) {
   // afford a 2-WORK builder (cost 410), recycle any living builder with <2 WORK so a
   // 2-WORK builder can spawn — doubling the build rate. This runs whenever the pool
   // has the energy (not just during the <prodCost slim-down).
-  if (controller && controller.level < 3 && contStruct === 0 && room.energyAvailable >= 410 && typeof s.recycleCreep === 'function') {
+  if (controller && controller.level < 3 && contStruct < 2 && room.energyAvailable >= 410 && typeof s.recycleCreep === 'function') {
     const weakBlds = Object.values(Game.creeps)
       .filter(c => c.memory.role === 'builder' && c.room.name === room.name &&
         c.body.filter(p => p.type === WORK).length < 2);
