@@ -232,15 +232,24 @@ function extendSpineToExtensions(room, desired, spinePositions) {
   // routed to the cached spine (not to whatever road happened to exist this tick), so
   // the desired set is stable and sites don't flicker in/out.
   if (!spinePositions || !spinePositions.length) return;
+  const rm = Memory.rooms[room.name];
   const nodes = cache.structures(room, STRUCTURE_EXTENSION).concat(cache.sites(room, STRUCTURE_EXTENSION));
+  // Cache the spur set: extension positions rarely change, so recomputing the paths
+  // every buildPlan tick (every 5) burns ~pathCost per extension. Only recompute when
+  // the set of extension nodes changes.
+  const nodeKey = nodes.map(n => n.pos.x + ',' + n.pos.y).sort().join('|');
+  let spurs = rm._extSpurs;
+  if (spurs && spurs.hash === nodeKey) {
+    for (const key of spurs.tiles) desired.add(key);
+    return;
+  }
+  const newTiles = [];
   for (const e of nodes) {
     let near = false;
-    for (const key of desired) {
-      const [x, y] = key.split(',').map(Number);
-      if (Math.abs(x - e.pos.x) <= 1 && Math.abs(y - e.pos.y) <= 1) { near = true; break; }
+    for (const p of spinePositions) {
+      if (Math.abs(p.x - e.pos.x) <= 1 && Math.abs(p.y - e.pos.y) <= 1) { near = true; break; }
     }
     if (near) continue;
-    // nearest spine tile by range, then path to it.
     let best = null, bestRange = Infinity;
     for (const p of spinePositions) {
       const r = e.pos.getRangeTo(p);
@@ -250,8 +259,9 @@ function extendSpineToExtensions(room, desired, spinePositions) {
     let path;
     try { path = room.findPath(e.pos, best, { swampCost: 1, range: 1 }); } catch (err) { continue; }
     if (!path || !path.length) continue;
-    for (const p of path) desired.add(p.x + ',' + p.y);
+    for (const p of path) { newTiles.push(p.x + ',' + p.y); desired.add(p.x + ',' + p.y); }
   }
+  rm._extSpurs = { hash: nodeKey, tiles: newTiles };
 }
 
 // 2-lane road network connecting the two sources, the spawn, and the controller:
@@ -329,16 +339,25 @@ function placeRoads(room) {
     }
   }
   rm._roadLocked = Array.from(locked);
-  // Prune only road sites that are neither locked nor on the intended spine+spurs.
-  for (const s of cache.sites(room, STRUCTURE_ROAD)) {
+  // Prune road sites that are neither locked nor on the intended spine+spurs.
+  const rSites = cache.sites(room, STRUCTURE_ROAD);
+  for (const s of rSites) {
     if (s.my && !locked.has(s.pos.x + ',' + s.pos.y)) s.remove();
   }
+  // Create road sites only for locked tiles that don't yet have a structure or a
+  // site. Pre-building the occupied set avoids two lookFor calls per tile inside
+  // makeSite for every tile in the (growing) locked set.
+  const occupied = new Set();
+  for (const s of cache.structures(room, STRUCTURE_ROAD)) occupied.add(s.pos.x + ',' + s.pos.y);
+  for (const s of rSites) occupied.add(s.pos.x + ',' + s.pos.y);
+  const terrain = room.getTerrain();
   let laid = 0;
   for (const key of locked) {
+    if (occupied.has(key)) continue;
     const [x, y] = key.split(',').map(Number);
     if (x >= 1 && x <= 48 && y >= 1 && y <= 48 &&
-        room.getTerrain().get(x, y) !== TERRAIN_MASK_WALL) {
-      if (makeSite(new RoomPosition(x, y, room.name), STRUCTURE_ROAD, room) === OK) laid++;
+        terrain.get(x, y) !== TERRAIN_MASK_WALL && isSpawnClear(new RoomPosition(x, y, room.name), room)) {
+      if (room.createConstructionSite(x, y, STRUCTURE_ROAD) === OK) laid++;
     }
   }
   if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid, locked: locked.size };
@@ -346,10 +365,10 @@ function placeRoads(room) {
 
 
 function placeStorage(room) {
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  const spawn = cache.spawn(room);
   const c = room.controller;
   if (!spawn || !c || c.level < 4) return;
-  if (room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_STORAGE }).length) return;
+  if (cache.structures(room, STRUCTURE_STORAGE).length) return;
   for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0]]) {
     const pos = new RoomPosition(spawn.pos.x + dx, spawn.pos.y + dy, room.name);
     if (makeSite(pos, STRUCTURE_STORAGE, room) === OK) return;
@@ -360,7 +379,7 @@ function placeStorage(room) {
 // Only plan them once RCL>=3 and the container+hauler loop is live, so they can
 // never starve the income unlock or clog the builder.
 function placeRamparts(room) {
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  const spawn = cache.spawn(room);
   if (!spawn) return;
   const c = room.controller;
   if (!c || c.level < 3) return;
@@ -394,7 +413,7 @@ function placeRamparts(room) {
 function placeTowers(room) {
   const c = room.controller;
   if (!c || c.level < 3) return;
-  if (room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).length) return;
+  if (cache.structures(room, STRUCTURE_TOWER).length) return;
   // Defer the tower until the home bank is healthy (>=500): a 600 build funded by
   // the spawn-side container starves the fragile 1-source recovery cycle (containers
   // empty -> decay -> collapse). Only site a tower once the bank can absorb the cost,
@@ -420,8 +439,8 @@ function placeTowers(room) {
 function placeObserver(room) {
   const c = room.controller;
   if (!c || c.level < 2) return;
-  if (room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_OBSERVER }).length) return;
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  if (cache.structures(room, STRUCTURE_OBSERVER).length) return;
+  const spawn = cache.spawn(room);
   if (!spawn) return;
   for (const [dx, dy] of [[0,0],[0,1],[1,0],[0,-1],[-1,0]]) {
     const pos = new RoomPosition(spawn.pos.x + dx, spawn.pos.y + dy, room.name);
@@ -433,8 +452,8 @@ function placeObserver(room) {
 function placeLinks(room) {
   const c = room.controller;
   if (!c || c.level < 5) return;
-  if (room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LINK }).length) return;
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  if (cache.structures(room, STRUCTURE_LINK).length) return;
+  const spawn = cache.spawn(room);
   if (!spawn) return;
   // Link near spawn for energy input
   let built = 0;
@@ -453,7 +472,7 @@ function placeExtractor(room) {
   if (!c || c.level < 6) return;
   const minerals = room.find(FIND_MINERALS);
   if (!minerals.length) return;
-  if (room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTRACTOR }).length) return;
+  if (cache.structures(room, STRUCTURE_EXTRACTOR).length) return;
   const mineral = minerals[0];
   for (const [dx, dy] of [[0,0],[0,1],[1,0],[0,-1],[-1,0]]) {
     const pos = new RoomPosition(mineral.pos.x + dx, mineral.pos.y + dy, room.name);
