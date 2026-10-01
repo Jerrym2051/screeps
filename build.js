@@ -208,6 +208,29 @@ function roadSpinePositions(room, legs) {
   return out;
 }
 
+function extendSpineToExtensions(room, desired) {
+  // Ensure each extension (built or sited) is reachable by road, but only add a short
+  // spur when it is not already adjacent to the existing road network.
+  const roadObjs = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_ROAD })
+    .concat(room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_ROAD }));
+  const nodes = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTENSION })
+    .concat(room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_EXTENSION }));
+  for (const e of nodes) {
+    let near = false;
+    for (const key of desired) {
+      const [x, y] = key.split(',').map(Number);
+      if (Math.abs(x - e.pos.x) <= 1 && Math.abs(y - e.pos.y) <= 1) { near = true; break; }
+    }
+    if (near) continue;
+    if (!roadObjs.length) continue;
+    const closest = e.pos.findClosestByRange(roadObjs);
+    let path;
+    try { path = room.findPath(e.pos, closest.pos, { swampCost: 1, range: 1 }); } catch (err) { continue; }
+    if (!path || !path.length) continue;
+    for (const p of path) desired.add(p.x + ',' + p.y);
+  }
+}
+
 // 2-lane road network connecting the two sources, the spawn, and the controller:
 // source1 <-> spawn <-> controller <-> source2 (and the reverse legs so each segment
 // is genuinely 2 tiles wide). Laid once the income loop is live (RCL2 + energy banked)
@@ -263,7 +286,11 @@ function placeRoads(room) {
   }
   const desired = new Set(rm._roadSpine ? rm._roadSpine.tiles : []);
   if (desired.size < 20) return;
-  // Prune any road site outside the intended spine — catches drift and leftover sites.
+  // Extend the spine to the extensions: lay a short spur only when an extension is
+  // not already adjacent to the road network. This keeps roads limited to routes
+  // between important structures instead of tiling the whole room.
+  extendSpineToExtensions(room, desired);
+  // Prune any road site outside the intended spine + extension spurs.
   for (const s of room.find(FIND_CONSTRUCTION_SITES, {
     filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
     if (!desired.has(s.pos.x + ',' + s.pos.y)) s.remove();
