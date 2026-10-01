@@ -47,10 +47,15 @@ function getManagedRooms() {
 }
 
 module.exports.loop = function () {
+  // Lightweight per-tick profiler (enable by setting Memory._prof = 1 in the console).
+  // Logs per-section CPU every 10 ticks with negligible overhead.
+  const _prof = Memory._prof ? { t0: Game.cpu.getUsed(), marks: [], cpu: Game.cpu.getUsed() } : null;
+
   // 1. clean up memory for dead creeps across all rooms
   for (const name in Memory.creeps) {
     if (!Game.creeps[name]) delete Memory.creeps[name];
   }
+  if (_prof) _prof.marks.push('memCleanup:' + (Game.cpu.getUsed() - _prof.t0));
   // 1b. clean up stale containerPos entries missing roomName
   if (Memory.rooms) {
     for (const roomName in Memory.rooms) {
@@ -151,6 +156,8 @@ module.exports.loop = function () {
     // 5. tower active defense + safe mode
     defense.manageTowers(room);
     defense.manageSafeMode(room);
+
+    if (_prof) _prof.marks.push('room[' + roomName + ']:' + (Game.cpu.getUsed() - _prof.t0));
   }
 
   // 6. expansion logic: find and claim ALL adjacent rooms in every direction.
@@ -191,6 +198,13 @@ module.exports.loop = function () {
         }
       }
      }
-   }
+    }
+  }
+
+  if (_prof) {
+    _prof.marks.push('expansion:' + (Game.cpu.getUsed() - _prof.t0));
+    if (Game.time % 10 === 0) {
+      console.log('_PROF', _prof.marks.join(' '));
+    }
   }
 };
