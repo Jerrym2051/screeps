@@ -200,6 +200,13 @@ function getTargets(room) {
   // were gated off forever even though a container held 2000 energy.
   const containers = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) });
   const filled = containers.filter(c => c.store.getUsedCapacity(RESOURCE_ENERGY) > 0).length;
+  // Source containers = the per-source income containers (one adjacent to each source).
+  // Gating the upgrader rush on THESE — not `filled`, which also counts the RCL2
+  // spawn-buffer containers — ensures u3 only fires once BOTH sources are actively
+  // dumping on-site (true 2-source income). The far source's container is a construction
+  // site until it's built, so it's absent from `containers` and srcContainersBuilt < 2
+  // until then — exactly the "both source containers online" signal we want.
+  const srcContainersBuilt = containers.filter(c => c.pos.findInRange(FIND_SOURCES, 1).length > 0).length;
   const stage = getRoomStage(room);
 
   let hostiles = room.find(FIND_HOSTILE_CREEPS);
@@ -260,7 +267,7 @@ function getTargets(room) {
     // (filled>0), before source1 was online: those 3 upgraders drained the 300-cap bank
     // against only ~50/tick income, starving the builders mid-build and locking source1
     // dark forever. Once RCL3 is reached, drop to u1 — a single WORK keeps the controller
-    targets.upgrader = haveContainer ? (filled >= 2 ? (controller && controller.level < 3 ? 3 : 1) : 1) : 0;
+    targets.upgrader = haveContainer ? (srcContainersBuilt >= 2 ? (controller && controller.level < 3 ? 3 : 1) : 1) : 0;
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
