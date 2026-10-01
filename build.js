@@ -242,22 +242,24 @@ function placeRoads(room) {
   if (!spawn || !c || c.level < 2 || srcContainers.length < 2 || room.energyAvailable < 300) return;
   const sources = room.find(FIND_SOURCES);
   if (!sources.length) return;
-  const src1 = sources.find(s => s.pos.x < 25) || sources[0];
-  const src2 = sources.find(s => s.pos.x >= 25) || sources[sources.length - 1];
-  // Three one-way legs form the spine: source1 -> spawn -> controller -> source2.
-  // Each segment is a true 2-tile strip (path tile + one fixed side). The old extra
-  // src1/src2 -> controller legs overlapped near the spawn/controller and ballooned the
-  // road width to 5 lanes; the spine covers all four nodes.
+  // Anchor the spine at the source containers (walkable), not the source tiles, so
+  // findPath can always produce a path. Three one-way legs form the spine:
+  // source1-container -> spawn -> controller -> source2-container.
+  const src1Cont = srcContainers.find(x => x.pos.x < 25) || srcContainers[0];
+  const src2Cont = srcContainers.find(x => x.pos.x >= 25) || srcContainers[srcContainers.length - 1];
+  if (!src1Cont || !src2Cont) return;
   const legs = [
-    [src1.pos, spawn.pos],
+    [src1Cont.pos, spawn.pos],
     [spawn.pos, c.pos],
-    [c.pos, src2.pos],
+    [c.pos, src2Cont.pos],
   ];
   // Cache the spine tiles once so pathfinding drift can't grow the network.
-  if (!rm._roadSpine || !rm._roadSpine.tiles || rm._roadSpine.v !== 4 || rm._roadSpine.tiles.length < 10) {
-    rm._roadSpine = { v: 4, t: Game.time, tiles: roadSpinePositions(room, legs).map(p => p[0] + ',' + p[1]) };
+  if (!rm._roadSpine || !rm._roadSpine.tiles || rm._roadSpine.v !== 5 || rm._roadSpine.tiles.length < 20) {
+    const tiles = roadSpinePositions(room, legs).map(p => p[0] + ',' + p[1]);
+    if (tiles.length >= 20) rm._roadSpine = { v: 5, t: Game.time, tiles };
   }
-  const desired = new Set(rm._roadSpine.tiles);
+  const desired = new Set(rm._roadSpine ? rm._roadSpine.tiles : []);
+  if (desired.size < 20) return;
   // Prune any road site outside the intended spine — catches drift and leftover sites.
   for (const s of room.find(FIND_CONSTRUCTION_SITES, {
     filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
