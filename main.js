@@ -213,12 +213,15 @@ module.exports.loop = function () {
 
   if (_prof) {
     _prof.marks.push('expansion:' + (Game.cpu.getUsed() - _prof.t0));
+    const _end = Game.cpu.getUsed();
+    _prof.marks.push('end:' + _end);
     if (Game.time % 10 === 0) {
       const line = _prof.marks.join(' ');
       console.log('_PROF', line);
       if (!Memory._profResult) Memory._profResult = [];
       Memory._profResult.push(line);
       if (Memory._profResult.length > 30) Memory._profResult.shift();
+      if (!Memory._cpuMax || _end > Memory._cpuMax) Memory._cpuMax = _end;
     }
   }
 };
