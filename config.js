@@ -268,9 +268,11 @@ function getTargets(room) {
     // against only ~50/tick income, starving the builders mid-build and locking source1
     // dark forever. Once RCL3 is reached, drop to u1 — a single WORK keeps the controller
     targets.upgrader = haveContainer ? (srcContainersBuilt >= 2 ? (controller && controller.level < 3 ? 3 : 1) : 1) : 0;
-    targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
-                       // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
-                       // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
+    targets.builder = 4; // ramp the far-container build: 2 builders crawl the 5000-site (2 build/tick =
+                       // ~40 min); 4 builders (4 WORK = 8 build/tick, ~10 min) finish source1's container
+                       // fast enough that RCL2 doesn't downgrade-risk while waiting. Funded
+                       // by the near-container pool (builders withdraw from containers, not
+                       // only the spawn), so it doesn't starve the upgrader.
     // Haulers are sized to the energy flowing INTO the containers (the harvest rate),
     // not to the energy flowing OUT (consumer drain) — otherwise a momentarily-full
     // source container spawns a stack of haulers that idle once it drains, OR too few
