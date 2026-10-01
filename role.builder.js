@@ -28,7 +28,8 @@ module.exports = function (creep) {
   }
   if (!site) {
     const sites = creep.room.find(FIND_CONSTRUCTION_SITES, {
-      filter: s => lvl >= 3 || s.structureType !== STRUCTURE_RAMPART });
+      filter: s => (lvl >= 3 || s.structureType !== STRUCTURE_RAMPART)
+        && s.structureType !== STRUCTURE_ROAD });
     if (sites.length) site = creep.pos.findClosestByPath(sites);
   }
 

@@ -222,33 +222,27 @@ function placeRoads(room) {
       s.pos.findInRange(FIND_SOURCES, 1).length > 0,
   });
   if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._placeRoadsRan = { t: Game.time, bank: room.energyAvailable, srcC: srcContainers.length, lvl: c && c.level };
-  if (!spawn || !c || c.level < 2 || srcContainers.length < 1 || room.energyAvailable < 300) return;
+  if (!spawn || !c || c.level < 3 || srcContainers.length < 2 || room.energyAvailable < 300) return;
   const sources = room.find(FIND_SOURCES);
   if (!sources.length) return;
   const src1 = sources.find(s => s.pos.x < 25) || sources[0];
   const src2 = sources.find(s => s.pos.x >= 25) || sources[sources.length - 1];
+  // Five one-way legs only (NOT mirrored pairs): pave2Lane already lays a double tile
+  // per step (the path tile + one perpendicular offset), so a single pass is a true
+  // 2-lane spine. Mirroring A->B and B->A would stack to 4 lanes — that's what
+  // ballooned this to 91 sites last run. source1<->spawn<->controller<->source2.
   const legs = [
-    [src1.pos, spawn.pos], [spawn.pos, src1.pos],
-    [src2.pos, spawn.pos], [spawn.pos, src2.pos],
-    [spawn.pos, c.pos], [c.pos, spawn.pos],
-    [src1.pos, c.pos], [c.pos, src1.pos],
-    [src2.pos, c.pos], [c.pos, src2.pos],
+    [src1.pos, spawn.pos],
+    [src2.pos, spawn.pos],
+    [spawn.pos, c.pos],
+    [src1.pos, c.pos],
+    [src2.pos, c.pos],
   ];
   let total = 0;
   for (const [a, b] of legs) total += pave2Lane(room, a, b);
   if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid: total };
-  // Access roads: pave the spawn's and each source's ring so creeps never trudge
-  // raw terrain onto/off a source or the spawn — cheap (300 build HP) continuous sink
-  // for surplus once income is healthy.
-  const ringCentres = [spawn.pos].concat(sources.map(s => s.pos));
-  for (const centre of ringCentres) {
-    for (const pos of ring(centre, 1)) {
-      if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
-      if (room.getTerrain().get(pos.x, pos.y) === TERRAIN_MASK_WALL) continue;
-      makeSite(pos, STRUCTURE_ROAD, room);
-    }
-  }
 }
+
 
 function placeStorage(room) {
   const spawn = room.find(FIND_MY_SPAWNS)[0];
