@@ -29,7 +29,7 @@ module.exports = function (creep) {
   if (!site) {
     const sites = creep.room.find(FIND_CONSTRUCTION_SITES, {
       filter: s => (lvl >= 3 || s.structureType !== STRUCTURE_RAMPART)
-        && s.structureType !== STRUCTURE_ROAD });
+        && (lvl >= 4 || s.structureType !== STRUCTURE_ROAD) });
     if (sites.length) site = creep.pos.findClosestByPath(sites);
   }
 
@@ -51,7 +51,7 @@ module.exports = function (creep) {
     // source container (the income unlock) instead of letting 1-MOVE builders
     // crawl to the spawn between every 50-energy withdrawal.
     const srcNear = site ? site.pos.findInRange(FIND_SOURCES, 2)[0] : null;
-    if (srcNear && creep.pos.inRangeTo(srcNear, 1)) {
+    if (srcNear && srcNear.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
       if (creep.harvest(srcNear) === ERR_NOT_IN_RANGE) creep.moveTo(srcNear, { reusePath: 5 });
       return;
     }
