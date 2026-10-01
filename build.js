@@ -181,26 +181,31 @@ function pave2Lane(room, fromPos, toPos) {
     return 0;
   }
   if (!path || !path.length) return 0;
+  // Fixed parallel offset for the whole segment. Choosing one side of the overall
+  // direction keeps the second lane aligned instead of hopping across turns and
+  // producing a 5-tile-wide corridor.
+  const dx = toPos.x - fromPos.x, dy = toPos.y - fromPos.y;
+  let ox = 0, oy = 0;
+  if (dx !== 0 || dy !== 0) {
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      ox = 0;
+      oy = dx >= 0 ? -1 : 1;
+    } else {
+      ox = dx >= 0 ? -1 : 1;
+      oy = 0;
+    }
+  }
   let laid = 0;
-  for (let i = 0; i < path.length; i++) {
-    const p = path[i];
+  for (const p of path) {
     const px = p.x, py = p.y;
     if (px >= 1 && px <= 48 && py >= 1 && py <= 48 &&
         room.getTerrain().get(px, py) !== TERRAIN_MASK_WALL) {
       if (makeSite(new RoomPosition(px, py, room.name), STRUCTURE_ROAD, room) === OK) laid++;
     }
-    // parallel lane: one tile offset from the path direction so opposing traffic
-    // doesn't stack on a single tile (true 2-lane, not a 1-tile spine).
-    if (i + 1 < path.length) {
-      const nx = path[i + 1].x - p.x, ny = path[i + 1].y - p.y;
-      // Single perpendicular side only: path tile + one offset = 2 lanes. Laying both
-      // sides produced a 3-tile-wide strip that stacked into 5+ lanes where legs crossed.
-      const [ox, oy] = pathPerp(nx, ny)[0];
-      const qx = px + ox, qy = py + oy;
-      if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
-          room.getTerrain().get(qx, qy) !== TERRAIN_MASK_WALL) {
-        if (makeSite(new RoomPosition(qx, qy, room.name), STRUCTURE_ROAD, room) === OK) laid++;
-      }
+    const qx = px + ox, qy = py + oy;
+    if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
+        room.getTerrain().get(qx, qy) !== TERRAIN_MASK_WALL) {
+      if (makeSite(new RoomPosition(qx, qy, room.name), STRUCTURE_ROAD, room) === OK) laid++;
     }
   }
   return laid;
@@ -214,21 +219,20 @@ function pave2Lane(room, fromPos, toPos) {
 function placeRoads(room) {
   const spawn = room.find(FIND_MY_SPAWNS)[0];
   const c = room.controller;
-  // One-time cleanup for the old generator: the previous pave2Lane laid both
-  // perpendicular sides, and the 5 overlapping legs stacked into up to 5 lanes.
-  // Wipe those stale road sites so the new 2-lane spine can start clean once the
-  // income gate opens.
+  // One-time cleanup: the previous generators laid a 3–5 tile-wide corridor. Wipe
+  // every stale road site so the new true 2-lane spine (path + one fixed parallel side)
+  // can be laid clean along the 3 tree edges.
   if (!Memory.rooms) Memory.rooms = {};
   if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
   const rm = Memory.rooms[room.name];
-  if (rm._roadGenVersion !== 2) {
+  if (rm._roadGenVersion !== 3) {
     let removed = 0;
     for (const s of room.find(FIND_CONSTRUCTION_SITES, {
       filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
       s.remove();
       removed++;
     }
-    rm._roadGenVersion = 2;
+    rm._roadGenVersion = 3;
     rm._roadCleanup = { t: Game.time, removed };
   }
   // Allow roads at RCL2 (the old energyAvailable>=500 gate never fired: the bank is
