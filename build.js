@@ -173,23 +173,26 @@ function pathPerp(dx, dy) {
 
 function pave2Lane(room, fromPos, toPos) {
   if (!fromPos || !toPos) return 0;
-  const res = PathFinder.search(fromPos, { pos: toPos, range: 0 }, {
-    plainCost: 1, swampCost: 1, heuristicWeight: 1.2,
-    maxOps: 2000, maxCost: 2000,
-  });
-  if (!res.path || !res.path.length) return 0;
+  let path;
+  try {
+    path = room.findPath(fromPos, toPos, { swampCost: 1, range: 1 });
+  } catch (e) {
+    if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadErr = e.message;
+    return 0;
+  }
+  if (!path || !path.length) return 0;
   let laid = 0;
-  for (let i = 0; i < res.path.length; i++) {
-    const p = res.path[i];
-    const px = Math.round(p.x), py = Math.round(p.y);
+  for (let i = 0; i < path.length; i++) {
+    const p = path[i];
+    const px = p.x, py = p.y;
     if (px >= 1 && px <= 48 && py >= 1 && py <= 48 &&
         room.getTerrain().get(px, py) !== TERRAIN_MASK_WALL) {
       if (makeSite(new RoomPosition(px, py, room.name), STRUCTURE_ROAD, room) === OK) laid++;
     }
     // parallel lane: one tile offset from the path direction so opposing traffic
     // doesn't stack on a single tile (true 2-lane, not a 1-tile spine).
-    if (i + 1 < res.path.length) {
-      const nx = res.path[i + 1].x - p.x, ny = res.path[i + 1].y - p.y;
+    if (i + 1 < path.length) {
+      const nx = path[i + 1].x - p.x, ny = path[i + 1].y - p.y;
       for (const [ox, oy] of pathPerp(nx, ny)) {
         const qx = px + ox, qy = py + oy;
         if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
@@ -218,6 +221,7 @@ function placeRoads(room) {
     filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
       s.pos.findInRange(FIND_SOURCES, 1).length > 0,
   });
+  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._placeRoadsRan = { t: Game.time, bank: room.energyAvailable, srcC: srcContainers.length, lvl: c && c.level };
   if (!spawn || !c || c.level < 2 || srcContainers.length < 1 || room.energyAvailable < 300) return;
   const sources = room.find(FIND_SOURCES);
   if (!sources.length) return;
@@ -230,7 +234,9 @@ function placeRoads(room) {
     [src1.pos, c.pos], [c.pos, src1.pos],
     [src2.pos, c.pos], [c.pos, src2.pos],
   ];
-  for (const [a, b] of legs) pave2Lane(room, a, b);
+  let total = 0;
+  for (const [a, b] of legs) total += pave2Lane(room, a, b);
+  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid: total };
   // Access roads: pave the spawn's and each source's ring so creeps never trudge
   // raw terrain onto/off a source or the spawn — cheap (300 build HP) continuous sink
   // for surplus once income is healthy.
