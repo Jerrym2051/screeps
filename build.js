@@ -158,7 +158,7 @@ function placeExtensions(room) {
   // the 2-lane roads/bank containers once RCL3 arrives, so it couldn't place the extra
   // extensions. Extend the scan (still centered on the spawn) until we hit the RCL cap
   // or run out of plain terrain.
-  for (let r = 2; r <= 8 && need > 0; r++) {
+   for (let r = 2; r <= 8 && need > 0; r++) {
     for (const pos of ring(spawn.pos, r)) {
       if (need <= 0) break;
       const t = room.getTerrain().get(pos.x, pos.y);
@@ -166,6 +166,8 @@ function placeExtensions(room) {
       if (makeSite(pos, STRUCTURE_EXTENSION, room) === OK) need--;
     }
   }
+  if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
+  Memory.rooms[room.name]._extDebug = { t: Game.time, need, have, max, bank: room.energyAvailable };
 }
 
 function pathPerp(dx, dy) {
