@@ -160,6 +160,22 @@ module.exports = function (creep) {
   } else {
     // Full — dump.
     const dump = findDumpTarget(creep, source);
+    // RCL1 cold-start: the spawn caps at 300 (no extensions/containers yet), so a full
+    // harvester's energy would rot there. Build the source's own container site in
+    // place — we're already on the source, so this completes the income-unlock
+    // container in seconds instead of forcing the 1-MOVE builders to walk from the
+    // spawn to the far source site. Only fires when the dump target is a FULL spawn
+    // (energy that would otherwise be wasted), so spawning bank is never stolen.
+    if (dump && dump.structureType === STRUCTURE_SPAWN && dump.store &&
+        dump.store.getFreeCapacity(RESOURCE_ENERGY) === 0) {
+      const site = source && creep.pos.findInRange(FIND_CONSTRUCTION_SITES, 4,
+        { filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
+      if (site) {
+        if (creep.build(site) !== ERR_NOT_IN_RANGE) return;
+        creep.moveTo(site, { reusePath: 5 });
+        return;
+      }
+    }
     if (!dump) {
       // Containers full + hauler running + bank healthy: idle on a free tile beside
       // the source (by the containers) so we dump the instant a hauler frees space,
