@@ -232,15 +232,16 @@ function placeRoads(room) {
     rm._roadCleanup = { t: Game.time, removed };
   }
   // Allow roads at RCL2 (the old energyAvailable>=500 gate never fired: the bank is
-  // capped at 300 until extensions exist, so roads were permanently starved). Gate
-  // on the income containers being built instead so road sites never steal build
-  // progress from the source containers that feed the bank.
+  // capped at 300 until extensions exist, so roads were permanently starved). The user
+  // now wants roads ASAP so haulers spend less travel time. Gate on the income
+  // containers existing AND a 300-energy floor so road site creation can't starve the
+  // RCL3/extension push.
   const srcContainers = room.find(FIND_STRUCTURES, {
     filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
       s.pos.findInRange(FIND_SOURCES, 1).length > 0,
   });
   if (rm) rm._placeRoadsRan = { t: Game.time, bank: room.energyAvailable, srcC: srcContainers.length, lvl: c && c.level };
-  if (!spawn || !c || c.level < 3 || srcContainers.length < 2 || room.energyAvailable < 300) return;
+  if (!spawn || !c || c.level < 2 || srcContainers.length < 2 || room.energyAvailable < 300) return;
   const sources = room.find(FIND_SOURCES);
   if (!sources.length) return;
   const src1 = sources.find(s => s.pos.x < 25) || sources[0];

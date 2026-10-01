@@ -29,7 +29,7 @@ module.exports = function (creep) {
   if (!site) {
     const sites = creep.room.find(FIND_CONSTRUCTION_SITES, {
       filter: s => (lvl >= 3 || s.structureType !== STRUCTURE_RAMPART)
-        && (lvl >= 4 || s.structureType !== STRUCTURE_ROAD) });
+        && (lvl >= 2 || s.structureType !== STRUCTURE_ROAD) });
     // With the income containers built, extensions become the bottleneck: until they
     // exist the energy bank is capped at the spawn's 300, so 2-WORK builders (and a
     // full RCL3 push) never arrive. Prioritize extension sites over the bank-buffer
