@@ -596,8 +596,12 @@ function manageSpawns(room) {
   // spawn shelve above sets memory.recycle=true, but that block only RUNS while
   // surplus — so once the last surplus upgrader is reaped, the remaining (on-target)
   // upgraders keep the stale flag and walk to the spawn forever, never coming back to
-  // upgrade (we watched ctrlProg stall at 3342 for that reason).
-  if (!needRescue && (counts.upgrader || 0) <= (targets.upgrader || 0)) {
+  // upgrade (we watched ctrlProg stall at 3342 for that reason). Note `counts` is
+  // sampled once at the top of the recruit loop and is STALE after the reaps above, so
+  // recompute live here.
+  const upgLive = Object.values(Game.creeps)
+    .filter(c => c.memory.role === 'upgrader' && c.room.name === room.name).length;
+  if (!needRescue && upgLive <= (targets.upgrader || 0)) {
     for (const c of Object.values(Game.creeps)) {
       if (c.memory.role === 'upgrader' && c.memory.recycle && c.room.name === room.name) {
         delete c.memory.recycle;
