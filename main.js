@@ -106,6 +106,7 @@ module.exports.loop = function () {
     // once per visible room (without this, every creep executes N times when N
     // rooms are visible — critical once we expand into a second room).
     const spawn = room.find(FIND_MY_SPAWNS)[0];
+    if (_prof) _prof.marks.push('creepStart:' + Game.cpu.getUsed());
     for (const name in Game.creeps) {
       const creep = Game.creeps[name];
       if (creep.room.name !== roomName) continue;
@@ -128,6 +129,7 @@ module.exports.loop = function () {
       if (fn) fn(creep);
       else creep.suicide();
     }
+    if (_prof) _prof.marks.push('creepEnd:' + Game.cpu.getUsed());
 
     // 2b. run claimer for this room if controller is not ours
     if (room.controller && !room.controller.my) {
@@ -145,17 +147,25 @@ module.exports.loop = function () {
 
     // 3. spawn missing roles in this room
     if (room.find(FIND_MY_SPAWNS).length > 0) {
+      if (_prof) _prof.marks.push('spawnStart:' + Game.cpu.getUsed());
       config.manageSpawns(room);
+      if (_prof) _prof.marks.push('spawnEnd:' + Game.cpu.getUsed());
     }
 
     // 4. idempotent construction plan — throttle to every 5 ticks.
     // buildPlan is idempotent (sites are deduped/silently skipped), so running it
     // every tick just re-ran the same room.find calls and burned CPU.
-    if (build && build.buildPlan && Game.time % 5 === 0) build.buildPlan(room);
+    if (build && build.buildPlan && Game.time % 5 === 0) {
+      if (_prof) _prof.marks.push('buildStart:' + Game.cpu.getUsed());
+      build.buildPlan(room);
+      if (_prof) _prof.marks.push('buildEnd:' + Game.cpu.getUsed());
+    }
 
     // 5. tower active defense + safe mode
+    if (_prof) _prof.marks.push('defStart:' + Game.cpu.getUsed());
     defense.manageTowers(room);
     defense.manageSafeMode(room);
+    if (_prof) _prof.marks.push('defEnd:' + Game.cpu.getUsed());
 
     if (_prof) _prof.marks.push('room[' + roomName + ']:' + (Game.cpu.getUsed() - _prof.t0));
   }
