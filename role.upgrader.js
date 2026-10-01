@@ -6,6 +6,16 @@
 module.exports = function (creep) {
   const c = creep.room.controller;
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
+  // Live diagnostic for the ctrlProg stall: record the upgrader's pos + distance to
+  // the controller so we can tell (a) whether moveTo(c) is actually moving it and
+  // (b) whether upgradeController sees the controller. Wiped after diagnosis.
+  if (creep.name.startsWith('upgrader')) {
+    (Memory.rooms[creep.room.name] = Memory.rooms[creep.room.name] || {}).upg = {
+      t: Game.time, x: creep.pos.x, y: creep.pos.y, rng: c ? creep.pos.getRangeTo(c) : 'noc',
+      e: creep.store.energy, rc: c ? creep.upgradeController(c) : 'noc',
+      path: PathFinder ? null : null,
+    };
+  }
   // Shelved by the recruiter: a surplus upgrader (over the target cap) that couldn't
   // be recycled because it wasn't adjacent to the spawn. Roll it back to the spawn so
   // s.recycleCreep succeeds next tick — without this, source1 income coming online
