@@ -171,44 +171,38 @@ function pathPerp(dx, dy) {
   return [[dy, -dx], [-dy, dx]];
 }
 
-function pave2Lane(room, fromPos, toPos) {
-  if (!fromPos || !toPos) return 0;
-  let path;
-  try {
-    path = room.findPath(fromPos, toPos, { swampCost: 1, range: 1 });
-  } catch (e) {
-    if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadErr = e.message;
-    return 0;
-  }
-  if (!path || !path.length) return 0;
-  // Fixed parallel offset for the whole segment. Choosing one side of the overall
-  // direction keeps the second lane aligned instead of hopping across turns and
-  // producing a 5-tile-wide corridor.
-  const dx = toPos.x - fromPos.x, dy = toPos.y - fromPos.y;
-  let ox = 0, oy = 0;
-  if (dx !== 0 || dy !== 0) {
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      ox = 0;
-      oy = dx >= 0 ? -1 : 1;
-    } else {
-      ox = dx >= 0 ? -1 : 1;
-      oy = 0;
+function roadSpinePositions(room, legs) {
+  // Returns the [x,y] tiles for the true 2-lane spine: the path centerline plus one
+  // fixed parallel side per segment. placeRoads caches this so pathfinding drift can't
+  // grow the network beyond the intended spine.
+  const out = [];
+  for (const [fromPos, toPos] of legs) {
+    if (!fromPos || !toPos) continue;
+    let path;
+    try {
+      path = room.findPath(fromPos, toPos, { swampCost: 1, range: 1 });
+    } catch (e) {
+      if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadErr = e.message;
+      continue;
+    }
+    if (!path || !path.length) continue;
+    const dx = toPos.x - fromPos.x, dy = toPos.y - fromPos.y;
+    let ox = 0, oy = 0;
+    if (dx !== 0 || dy !== 0) {
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        ox = 0;
+        oy = dx >= 0 ? -1 : 1;
+      } else {
+        ox = dx >= 0 ? -1 : 1;
+        oy = 0;
+      }
+    }
+    for (const p of path) {
+      out.push([p.x, p.y]);
+      out.push([p.x + ox, p.y + oy]);
     }
   }
-  let laid = 0;
-  for (const p of path) {
-    const px = p.x, py = p.y;
-    if (px >= 1 && px <= 48 && py >= 1 && py <= 48 &&
-        room.getTerrain().get(px, py) !== TERRAIN_MASK_WALL) {
-      if (makeSite(new RoomPosition(px, py, room.name), STRUCTURE_ROAD, room) === OK) laid++;
-    }
-    const qx = px + ox, qy = py + oy;
-    if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
-        room.getTerrain().get(qx, qy) !== TERRAIN_MASK_WALL) {
-      if (makeSite(new RoomPosition(qx, qy, room.name), STRUCTURE_ROAD, room) === OK) laid++;
-    }
-  }
-  return laid;
+  return out;
 }
 
 // 2-lane road network connecting the two sources, the spawn, and the controller:
@@ -251,17 +245,33 @@ function placeRoads(room) {
   const src1 = sources.find(s => s.pos.x < 25) || sources[0];
   const src2 = sources.find(s => s.pos.x >= 25) || sources[sources.length - 1];
   // Three one-way legs form the spine: source1 -> spawn -> controller -> source2.
-  // Each pave2Lane pass is now a true 2-tile strip (path tile + one side). The old
-  // extra src1/src2 -> controller legs overlapped near the spawn/controller and
-  // ballooned the road width to 5 lanes; the spine covers all four nodes.
+  // Each segment is a true 2-tile strip (path tile + one fixed side). The old extra
+  // src1/src2 -> controller legs overlapped near the spawn/controller and ballooned the
+  // road width to 5 lanes; the spine covers all four nodes.
   const legs = [
     [src1.pos, spawn.pos],
     [spawn.pos, c.pos],
     [c.pos, src2.pos],
   ];
-  let total = 0;
-  for (const [a, b] of legs) total += pave2Lane(room, a, b);
-  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid: total };
+  // Cache the spine tiles once so pathfinding drift can't grow the network.
+  if (!rm._roadSpine || !rm._roadSpine.tiles || rm._roadSpine.v !== 4 || rm._roadSpine.tiles.length < 10) {
+    rm._roadSpine = { v: 4, t: Game.time, tiles: roadSpinePositions(room, legs).map(p => p[0] + ',' + p[1]) };
+  }
+  const desired = new Set(rm._roadSpine.tiles);
+  // Prune any road site outside the intended spine — catches drift and leftover sites.
+  for (const s of room.find(FIND_CONSTRUCTION_SITES, {
+    filter: x => x.structureType === STRUCTURE_ROAD && x.my })) {
+    if (!desired.has(s.pos.x + ',' + s.pos.y)) s.remove();
+  }
+  let laid = 0;
+  for (const key of desired) {
+    const [x, y] = key.split(',').map(Number);
+    if (x >= 1 && x <= 48 && y >= 1 && y <= 48 &&
+        room.getTerrain().get(x, y) !== TERRAIN_MASK_WALL) {
+      if (makeSite(new RoomPosition(x, y, room.name), STRUCTURE_ROAD, room) === OK) laid++;
+    }
+  }
+  if (Memory.rooms && Memory.rooms[room.name]) Memory.rooms[room.name]._roadLaid = { t: Game.time, laid, desired: desired.size };
 }
 
 
