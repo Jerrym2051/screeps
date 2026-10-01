@@ -791,11 +791,13 @@ function manageSpawns(room) {
     // harvesters/builder up to 2-WORK automatically as energyAvailable rises.
     const body = buildBody(role, room.energyAvailable);
     if (body.length === 0) continue;
-    // Reserve guard: never drain the bank below 100. At RCL1 the bank hard-caps at 300, so
-    // a 300-cost body (or a queued second spawn) drains it to 0 — the cold-start crash
-    // that stalled the source containers. Skip this spawn if the body would leave the
-    // bank below the recovery floor (income needs ~100 banked to fund the next body).
-    if (bodyCost(body) > room.energyAvailable - 100) continue;
+    // Reserve guard: never drain the bank below 50. At RCL1 the bank hard-caps at 300, so
+    // a 300-cost body drains it to 0 — the cold-start crash that stalled the source
+    // containers. Skip this spawn if the body would leave the bank below the recovery
+    // floor (income needs ~50 banked to fund the next body). 50 is tight enough to still
+    // allow the 250-cost upgrader (300->50, recoverable in a few ticks once both sources
+    // run) while blocking any spawn that would zero the bank.
+    if (bodyCost(body) > room.energyAvailable - 50) continue;
     // Pre-container: don't replace a lost harvester with another 1-WORK body while
     // functional harvesters still run — a 1-WORK spawn (~200) just resets the bank
     // to ~0 and perpetuates the carry-trip thrash, blocking the climb to 290+.
