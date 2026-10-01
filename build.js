@@ -173,10 +173,9 @@ function pathPerp(dx, dy) {
 
 function pave2Lane(room, fromPos, toPos) {
   if (!fromPos || !toPos) return 0;
-  const res = PathFinder.search(fromPos, toPos, {
-    plainCost: 1, swampCost: 1,
-    roomCosts: new CostMatrix(),
-    heuristicWeight: 1.2,
+  const res = PathFinder.search(fromPos, { pos: toPos, range: 0 }, {
+    plainCost: 1, swampCost: 1, heuristicWeight: 1.2,
+    maxOps: 2000, maxCost: 2000,
   });
   if (!res.path || !res.path.length) return 0;
   let laid = 0;
