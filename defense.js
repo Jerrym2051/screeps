@@ -1,12 +1,24 @@
 // defense.js - shared combat/defense brain
 const config = require('config');
 
+// Per-tick cache: getHostiles is called from the main creep loop (once per creep),
+// from getHostilesNear (8 neighbor rooms), towers, and safe-mode — without a cache
+// that's a full hostile scan of ~9 rooms per creep per tick. Cache by room.
+let _hostileTick = -1;
+const _hostileCache = {};
 function getHostiles(room) {
-  const allies = (config.allies || []);
-  return room.find(FIND_HOSTILE_CREEPS).filter(c => {
+  if (_hostileTick !== Game.time) {
+    _hostileTick = Game.time;
+    for (const k in _hostileCache) delete _hostileCache[k];
+  }
+  if (_hostileCache[room.name]) return _hostileCache[room.name];
+  const allies = config.allies || [];
+  const result = room.find(FIND_HOSTILE_CREEPS).filter(c => {
     const u = c.owner && c.owner.username;
     return !allies.includes(u);
   });
+  _hostileCache[room.name] = result;
+  return result;
 }
 
 function findTarget(origin, hostiles) {

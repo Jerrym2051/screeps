@@ -143,18 +143,22 @@ module.exports.loop = function () {
       config.manageSpawns(room);
     }
 
-    // 4. idempotent construction plan
-    if (Game.time % 50 === 0) console.log('buildPlan called for', room.name, 'build type:', typeof build, 'buildPlan type:', build && typeof build.buildPlan);
-    if (build && build.buildPlan) build.buildPlan(room);
+    // 4. idempotent construction plan — throttle to every 5 ticks.
+    // buildPlan is idempotent (sites are deduped/silently skipped), so running it
+    // every tick just re-ran the same room.find calls and burned CPU.
+    if (build && build.buildPlan && Game.time % 5 === 0) build.buildPlan(room);
 
     // 5. tower active defense + safe mode
     defense.manageTowers(room);
     defense.manageSafeMode(room);
   }
 
-  // 6. expansion logic: find and claim ALL adjacent rooms in every direction
-  const homeRoom = config.getHomeRoom();
-  if (homeRoom && homeRoom.controller && homeRoom.controller.my && homeRoom.controller.level >= 2) {
+  // 6. expansion logic: find and claim ALL adjacent rooms in every direction.
+  // Throttle to every 25 ticks — this scans 80 phantom neighbor names + writes memory
+  // every tick otherwise, for no benefit (rooms don't flip ownership 40x/tick).
+  if (Game.time % 25 === 0) {
+    const homeRoom = config.getHomeRoom();
+    if (homeRoom && homeRoom.controller && homeRoom.controller.my && homeRoom.controller.level >= 2) {
     const m = homeRoom.name.match(/^([WE])(\d+)([NS])(\d+)$/);
     if (m) {
       const [, wS, wN, nS, nN] = m;
@@ -186,6 +190,7 @@ module.exports.loop = function () {
           }
         }
       }
-    }
+     }
+   }
   }
 };
