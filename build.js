@@ -154,7 +154,10 @@ function placeExtensions(room) {
   const have = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTENSION }).length;
   let need = max - have;
   if (need <= 0) return;
-  for (let r = 1; r <= 3 && need > 0; r++) {
+  // Scan outward past the road spine: the old radius 1–3 window is fully occupied by
+  // the 2-lane roads/bank containers once RCL3 arrives, so it couldn't place the extra
+  // extensions. Keep them reasonably close to the spawn (radius 2–6).
+  for (let r = 2; r <= 6 && need > 0; r++) {
     for (const pos of ring(spawn.pos, r)) {
       if (need <= 0) break;
       const t = room.getTerrain().get(pos.x, pos.y);
