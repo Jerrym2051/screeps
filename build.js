@@ -164,28 +164,77 @@ function placeExtensions(room) {
   }
 }
 
-function placeRoads(room) {
-  const spawn = room.find(FIND_MY_SPAWNS)[0];
-  // Only build roads once the source-container->haul loop is live (a built
-  // container + haulers). Road sites are cheap to place but EXPENSIVE to build
-  // (500 hits each) and compete with the container RCL push, so keep this gated
-  // until the pool holds a real surplus (>= 500), i.e. income is healthy.
-  if (!spawn || room.energyAvailable < 500) return;
-  const sources = room.find(FIND_SOURCES);
-  const targets = sources.concat(room.controller ? [room.controller] : []);
-  for (const t of targets) {
-    const path = PathFinder.search(spawn.pos, t.pos, { swampCost: 1 }).path;
-    for (const step of path) {
-      const pos = new RoomPosition(step.x, step.y, room.name);
-      if (room.getTerrain().get(pos.x, pos.y) !== TERRAIN_MASK_WALL) {
-        makeSite(pos, STRUCTURE_ROAD, room);
+function pathPerp(dx, dy) {
+  // rotate the step direction (dx,dy) by 90 to get a lane-parallel offset.
+  // (dx,dy) are each -1/0/1 (PathFinder steps are cardinal/diagonal), so the
+  // returned neighbor is exactly one tile to the left/right of the path = a 2nd lane.
+  return [[dy, -dx], [-dy, dx]];
+}
+
+function pave2Lane(room, fromPos, toPos) {
+  if (!fromPos || !toPos) return 0;
+  const res = PathFinder.search(fromPos, toPos, {
+    plainCost: 1, swampCost: 1,
+    roomCosts: new CostMatrix(),
+    heuristicWeight: 1.2,
+  });
+  if (!res.path || !res.path.length) return 0;
+  let laid = 0;
+  for (let i = 0; i < res.path.length; i++) {
+    const p = res.path[i];
+    const px = Math.round(p.x), py = Math.round(p.y);
+    if (px >= 1 && px <= 48 && py >= 1 && py <= 48 &&
+        room.getTerrain().get(px, py) !== TERRAIN_MASK_WALL) {
+      if (makeSite(new RoomPosition(px, py, room.name), STRUCTURE_ROAD, room) === OK) laid++;
+    }
+    // parallel lane: one tile offset from the path direction so opposing traffic
+    // doesn't stack on a single tile (true 2-lane, not a 1-tile spine).
+    if (i + 1 < res.path.length) {
+      const nx = res.path[i + 1].x - p.x, ny = res.path[i + 1].y - p.y;
+      for (const [ox, oy] of pathPerp(nx, ny)) {
+        const qx = px + ox, qy = py + oy;
+        if (qx >= 1 && qx <= 48 && qy >= 1 && qy <= 48 &&
+            room.getTerrain().get(qx, qy) !== TERRAIN_MASK_WALL) {
+          if (makeSite(new RoomPosition(qx, qy, room.name), STRUCTURE_ROAD, room) === OK) laid++;
+        }
       }
     }
   }
-  // Access roads: pave the spawn's and each source's 8 neighbours so creeps never
-  // trudge raw terrain to/from work — a cheap, sustained energy sink (300 build
-  // each) for surplus. Gated on the >=500 surplus rule above, so this only runs
-  // once income is healthy.
+  return laid;
+}
+
+// 2-lane road network connecting the two sources, the spawn, and the controller:
+// source1 <-> spawn <-> controller <-> source2 (and the reverse legs so each segment
+// is genuinely 2 tiles wide). Laid once the income loop is live (RCL2 + energy banked)
+// and source containers exist — a 2-lane road cuts creep travel in half and lets the
+// 1-MOVE workers move at full 2-MOVE body speed without zoning each other out.
+function placeRoads(room) {
+  const spawn = room.find(FIND_MY_SPAWNS)[0];
+  const c = room.controller;
+  // Allow roads at RCL2 (the old energyAvailable>=500 gate never fired: the bank is
+  // capped at 300 until extensions exist, so roads were permanently starved). Gate
+  // on the income containers being built instead so road sites never steal build
+  // progress from the source containers that feed the bank.
+  const srcContainers = room.find(FIND_STRUCTURES, {
+    filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
+      s.pos.findInRange(FIND_SOURCES, 1).length > 0,
+  });
+  if (!spawn || !c || c.level < 2 || srcContainers.length < 1 || room.energyAvailable < 300) return;
+  const sources = room.find(FIND_SOURCES);
+  if (!sources.length) return;
+  const src1 = sources.find(s => s.pos.x < 25) || sources[0];
+  const src2 = sources.find(s => s.pos.x >= 25) || sources[sources.length - 1];
+  const legs = [
+    [src1.pos, spawn.pos], [spawn.pos, src1.pos],
+    [src2.pos, spawn.pos], [spawn.pos, src2.pos],
+    [spawn.pos, c.pos], [c.pos, spawn.pos],
+    [src1.pos, c.pos], [c.pos, src1.pos],
+    [src2.pos, c.pos], [c.pos, src2.pos],
+  ];
+  for (const [a, b] of legs) pave2Lane(room, a, b);
+  // Access roads: pave the spawn's and each source's ring so creeps never trudge
+  // raw terrain onto/off a source or the spawn — cheap (300 build HP) continuous sink
+  // for surplus once income is healthy.
   const ringCentres = [spawn.pos].concat(sources.map(s => s.pos));
   for (const centre of ringCentres) {
     for (const pos of ring(centre, 1)) {
