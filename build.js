@@ -109,7 +109,14 @@ function placeContainers(room) {
   const contUsable = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).length;
   const contSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).length;
   const max = 5 - (contUsable + contSites);
-  if (spawn && max > 0) {
+  // RCL1 cold-start: NO bank buffer. The income-gate keeps us at the 300 spawn cap
+  // (extensions don't exist until RCL2), and every 5000-build HP the builders spend on
+  // a near-spawn container is HP stolen from the SOURCE income-unlock containers the
+  // harvesters won't dump into. The 1-MOVE builders are slow and heavy; force them to
+  // finish a source container first so harvesters can dump on-site (→ no 90-tick
+  // source↔spawn round-trip) and the cascade to RCL2 can start. Bank buffers are
+  // placed at RCL2+ (when the bank overflows past 550 and haulers exist to use them).
+  if (spawn && max > 0 && room.controller && room.controller.level >= 2) {
     let placed = 0;
     outer: for (let r = 2; r <= 3 && placed < max; r++) {
       for (const pos of ring(spawn.pos, r)) {
