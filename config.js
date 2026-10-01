@@ -589,7 +589,20 @@ function manageSpawns(room) {
       // (far from the spawn) and could never be culled — they sat there draining the
       // source container forever and kept the bank below RCL3.
       victim.memory.recycle = true;
-      if (Memory._debugRecruit) console.log('Shelved surplus upgrader', victim.name, 'to walk-to-spawn (recycleCreep rc=', r + ')');
+      if (Memory._debugRecruit) console.log('Shelved surplus upgrader', victim.name, 'to walk-to-spawn (recycleCreipe rc=', r + ')');
+    }
+  }
+  // Clear leftover recycle flags once we're back at/under the target cap. The walk-to-
+  // spawn shelve above sets memory.recycle=true, but that block only RUNS while
+  // surplus — so once the last surplus upgrader is reaped, the remaining (on-target)
+  // upgraders keep the stale flag and walk to the spawn forever, never coming back to
+  // upgrade (we watched ctrlProg stall at 3342 for that reason).
+  if (!needRescue && (counts.upgrader || 0) <= (targets.upgrader || 0)) {
+    for (const c of Object.values(Game.creeps)) {
+      if (c.memory.role === 'upgrader' && c.memory.recycle && c.room.name === room.name) {
+        delete c.memory.recycle;
+        if (Memory._debugRecruit) console.log('Cleared stale recycle flag on', c.name);
+      }
     }
   }
 
