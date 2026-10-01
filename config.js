@@ -252,12 +252,15 @@ function getTargets(room) {
     // starves the builder mid-build. Once the container exists the harvesters
     // dump at the source and income jumps, so the upgrader is affordable again.
     const haveContainer = filled > 0;
-    // Updaters: rush RCL3 at u3 (bank capped at 550, surplus overflows into
-    // containers, so spare income is best spent on the controller). Once RCL3 is
-    // reached, drop to u1 — a single WORK keeps the controller above its downgrade
-    // timer while the bank funds the outpost claim + first remote harvester. The
-    // old bank-gated formula churned (3 at 550 -> 1 at 300) and culled upgraders.
-    targets.upgrader = haveContainer ? (controller && controller.level < 3 ? 3 : 1) : 0;
+    // Updaters: 1 always (anti-downgrade) once the near container exists. Rush to 3 only
+    // once BOTH source containers are filled (filled >= 2) — i.e. source1 is online and
+    // income has jumped to ~100/tick, so the bank (300 at RCL1 -> 550+ at RCL2) can fund
+    // three 250-cost upgraders without stalling the builder that's still finishing the far
+    // container. The old u3-at-lvl<3 formula fired the moment the NEAR container filled
+    // (filled>0), before source1 was online: those 3 upgraders drained the 300-cap bank
+    // against only ~50/tick income, starving the builders mid-build and locking source1
+    // dark forever. Once RCL3 is reached, drop to u1 — a single WORK keeps the controller
+    targets.upgrader = haveContainer ? (filled >= 2 ? (controller && controller.level < 3 ? 3 : 1) : 1) : 0;
     targets.builder = 2; // keep two builders on the source container pre-unlock (income pool can fund a
                        // 2-WORK + 1-WORK pair = 3 build/tick against the 5000-progress site); the
                        // pre-container builder-upgrade recycles <2-WORK builders for 2-WORK ones.
