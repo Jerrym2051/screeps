@@ -158,16 +158,18 @@ function placeExtensions(room) {
   // the 2-lane roads/bank containers once RCL3 arrives, so it couldn't place the extra
   // extensions. Extend the scan (still centered on the spawn) until we hit the RCL cap
   // or run out of plain terrain.
+   let made = 0, blocked = 0, firstBlocked = null;
    for (let r = 2; r <= 8 && need > 0; r++) {
-    for (const pos of ring(spawn.pos, r)) {
-      if (need <= 0) break;
-      const t = room.getTerrain().get(pos.x, pos.y);
-      if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) continue;
-      if (makeSite(pos, STRUCTURE_EXTENSION, room) === OK) need--;
-    }
-  }
-  if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
-  Memory.rooms[room.name]._extDebug = { t: Game.time, need, have, max, bank: room.energyAvailable };
+     for (const pos of ring(spawn.pos, r)) {
+       if (need <= 0) break;
+       const t = room.getTerrain().get(pos.x, pos.y);
+       if (t === TERRAIN_MASK_WALL || t === TERRAIN_MASK_SWAMP) { blocked++; if (!firstBlocked) firstBlocked = pos.x + ',' + pos.y + ':wall'; continue; }
+       if (pos.lookFor(LOOK_STRUCTURES).length || pos.lookFor(LOOK_CONSTRUCTION_SITES).length) { blocked++; if (!firstBlocked) firstBlocked = pos.x + ',' + pos.y + ':occ'; continue; }
+       if (makeSite(pos, STRUCTURE_EXTENSION, room) === OK) { need--; made++; }
+     }
+   }
+   if (!Memory.rooms[room.name]) Memory.rooms[room.name] = {};
+  Memory.rooms[room.name]._extDebug = { t: Game.time, need, have, max, bank: room.energyAvailable, made, blocked, firstBlocked };
 }
 
 function pathPerp(dx, dy) {
