@@ -4,18 +4,26 @@ module.exports = function (creep) {
   const c = creep.room.controller;
   const lvl = c ? c.level : 0;
 
-  // Target priority: the source container stored in memory (the income unlock
-  // that unblocks harvesters->container->hauler), then the closest non-rampart
-  // site (ramparts are a pure drain below RCL3, so skip them pre-RCL3 and
-  // upgrade the controller instead).
-  let site = null;
+  // Target priority: a source container stored in memory (the income unlock that
+   // reroutes harvesters to an on-site dump, killing the far source<->spawn walk), then
+   // the closest non-rampart site (ramparts are a pure drain below RCL3, so skip them
+   // pre-RCL3 and upgrade the controller instead). When several source containers
+   // exist, finish the one CLOSEST to the spawn first — its source's harvesters are
+   // already nearest the spawn, so completing it first lets them start dumping on-site
+   // sooner, spiking income and unblocking the RCL2 income gate (bank > 300).
+   let site = null;
   const mem = Memory.rooms?.[creep.room.name]?.sources;
   if (mem) {
+    const candidates = [];
     for (const sid in mem) {
       const cp = mem[sid].containerPos;
       if (!cp || cp.roomName !== creep.room.name) continue;
       const s = new RoomPosition(cp.x, cp.y, cp.roomName).lookFor(LOOK_CONSTRUCTION_SITES)[0];
-      if (s) { site = s; break; }
+      if (s) candidates.push(s);
+    }
+    if (candidates.length) {
+      site = candidates.reduce((a, b) =>
+        (a.pos.getRangeTo(spawn) <= b.pos.getRangeTo(spawn) ? a : b));
     }
   }
   if (!site) {
