@@ -160,14 +160,18 @@ module.exports = function (creep) {
   } else {
     // Full — dump.
     const dump = findDumpTarget(creep, source);
-    // RCL1 cold-start: the spawn caps at 300 (no extensions/containers yet), so a full
-    // harvester's energy would rot there. Build the source's own container site in
-    // place — we're already on the source, so this completes the income-unlock
-    // container in seconds instead of forcing the 1-MOVE builders to walk from the
-    // spawn to the far source site. Only fires when the dump target is a FULL spawn
-    // (energy that would otherwise be wasted), so spawning bank is never stolen.
-    if (dump && dump.structureType === STRUCTURE_SPAWN && dump.store &&
-        dump.store.getFreeCapacity(RESOURCE_ENERGY) === 0) {
+    // RCL1 cold-start: the spawn caps at 300 (no extensions until RCL2, which needs
+    // the upgrader the gate starves of energy), so a full harvester's energy would
+    // rot there once the bank reaches ~200-300. Build the source's own container
+    // site in place instead — we're already on the source, so this completes the
+    // income-unlock container in seconds instead of forcing the 1-MOVE builders
+    // (overweight, slow) to walk from the spawn to the far source site. Fires only
+    // when the only dump target is the spawn and the bank is >=200 (still affordable
+    // for the spawn, and the respawn bonus covers the RCL1 spawn cost) — below 200,
+    // the harvester deposits at the spawn to fund creep production. Energy is
+    // conserved either way; this just routes it to a 1500-capacity container instead
+    // of a 300-capacity capped spawn.
+    if (dump && dump.structureType === STRUCTURE_SPAWN && creep.room.energyAvailable >= 200) {
       const site = source && creep.pos.findInRange(FIND_CONSTRUCTION_SITES, 4,
         { filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
       if (site) {
