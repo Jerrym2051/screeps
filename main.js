@@ -132,9 +132,10 @@ module.exports.loop = function () {
       else creep.suicide();
       if (_prof) {
         const d = Game.cpu.getUsed() - _cb;
-        if (!Memory._creepProf) Memory._creepProf = [];
-        Memory._creepProf.push(creep.name + ':' + (creep.memory.role || '?') + ':' + Math.round(d * 100) / 100 + ':' + Math.round((creep.pos.x) * 100) + ',' + Math.round(creep.pos.y * 100));
-        if (Memory._creepProf.length > 60) Memory._creepProf.shift();
+        const _cmax = Memory._creepMax || { cost: 0 };
+        if (d > _cmax.cost) {
+          Memory._creepMax = { name: creep.name, role: creep.memory.role || '?', cost: Math.round(d*100)/100, x: creep.pos.x, y: creep.pos.y, tick: Game.time };
+        }
       }
     }
     if (_prof) _prof.marks.push('creepEnd:' + Game.cpu.getUsed());
