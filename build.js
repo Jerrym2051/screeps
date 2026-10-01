@@ -156,8 +156,9 @@ function placeExtensions(room) {
   if (need <= 0) return;
   // Scan outward past the road spine: the old radius 1–3 window is fully occupied by
   // the 2-lane roads/bank containers once RCL3 arrives, so it couldn't place the extra
-  // extensions. Keep them reasonably close to the spawn (radius 2–6).
-  for (let r = 2; r <= 6 && need > 0; r++) {
+  // extensions. Extend the scan (still centered on the spawn) until we hit the RCL cap
+  // or run out of plain terrain.
+  for (let r = 2; r <= 8 && need > 0; r++) {
     for (const pos of ring(spawn.pos, r)) {
       if (need <= 0) break;
       const t = room.getTerrain().get(pos.x, pos.y);
