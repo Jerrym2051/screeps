@@ -310,11 +310,15 @@ function placeRoads(room) {
     [src1Cont.pos, spawn.pos],
     [spawn.pos, c.pos],
     [c.pos, src2Cont.pos],
+    // North corridor: road from the spawn to the northern exit for expansion.
+    [spawn.pos, new RoomPosition(spawn.pos.x, 1, room.name)],
   ];
   // Cache the spine tiles once so pathfinding drift can't grow the network.
-  if (!rm._roadSpine || !rm._roadSpine.tiles || rm._roadSpine.v !== 5 || rm._roadSpine.tiles.length < 20) {
+  // Bumped to v6: the north-expansion leg above changes the intended network, so
+  // invalidate the cached spine and regenerate it this plan tick.
+  if (!rm._roadSpine || !rm._roadSpine.tiles || rm._roadSpine.v !== 6 || rm._roadSpine.tiles.length < 20) {
     const tiles = roadSpinePositions(room, legs).map(p => p[0] + ',' + p[1]);
-    if (tiles.length >= 20) rm._roadSpine = { v: 5, t: Game.time, tiles };
+    if (tiles.length >= 20) rm._roadSpine = { v: 6, t: Game.time, tiles };
   }
   const desired = new Set(rm._roadSpine ? rm._roadSpine.tiles : []);
   if (desired.size < 20) return;
