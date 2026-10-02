@@ -5,7 +5,7 @@ const SPAWN_CLEAR_RADIUS = 1; // leave the 8 tiles adjacent to the spawn empty f
 
 // Fixed road waypoints the spine routing doesn't cover but that are strategic
 // chokepoints/crossing tiles that must always have a road (even on swamp).
-const FIXED_ROAD_POINTS = ['16,16'];
+const FIXED_ROAD_POINTS = ['16,16', '18,1']; // '18,1' = last buildable tile before the north room exit
 
 function getSpawn(room) { return cache.spawn(room); }
 
