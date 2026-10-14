@@ -47,49 +47,15 @@ module.exports = function (creep) {
   // hold 2000, enough to keep the bank funded), then extensions, then the spawn,
   // then mine the source. Withdrawing from the container (not the spawn) is what
   // keeps spawn energy available to actually build a hauler during the cold-start.
+  // Empty — STORAGE ONLY. No containers, no spawn, no extensions, no harvesting.
+  // Idle at the site if storage is dry.
   if (used === 0) {
-    const need = creep.store.getFreeCapacity(RESOURCE_ENERGY);
-    // Withdraw from the nearest container that can fill the builder FIRST. This must
-    // precede the source-harvest shortcut, otherwise builders keep mining while the
-    // income containers are already full and roads/extensions are the current sites.
-    const fillCont = creep.pos.findClosestByRange(FIND_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
-        s.store.getUsedCapacity(RESOURCE_ENERGY) >= need });
-    if (fillCont) {
-      if (creep.withdraw(fillCont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(fillCont, { reusePath: 5 });
+    const storage = creep.room.storage;
+    if (storage && storage.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
+      if (creep.withdraw(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(storage, { reusePath: 5 });
       return;
     }
-    // Cold-start accelerator: only mine when no container can fill the builder and the
-    // target is a source-container site adjacent to a source.
-    const srcNear = site ? site.pos.findInRange(FIND_SOURCES, 2)[0] : null;
-    if (srcNear) {
-      if (creep.harvest(srcNear) === ERR_NOT_IN_RANGE) creep.moveTo(srcNear, { reusePath: 5 });
-      return;
-    }
-    const cont = creep.pos.findClosestByRange(FIND_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) &&
-        s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
-    if (cont) {
-      if (creep.withdraw(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont, { reusePath: 5 });
-      return;
-    }
-    const ext = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
-      filter: s => s.structureType === STRUCTURE_EXTENSION && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
-    if (ext) {
-      if (creep.withdraw(ext, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(ext, { reusePath: 5 });
-      return;
-    }
-    if (spawn && spawn.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
-      if (creep.withdraw(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spawn, { reusePath: 5 });
-      return;
-    }
-    // Nothing in the pool — mine the source at the site as a last resort.
-    const nearSrc = site ? site.pos.findInRange(FIND_SOURCES, 4)[0] : null;
-    if (nearSrc) {
-      if (creep.harvest(nearSrc) === ERR_NOT_IN_RANGE) creep.moveTo(nearSrc, { reusePath: 5 });
-      return;
-    }
-    // No energy anywhere — just get into position at the site.
+    // Storage dry — move to site and wait.
     if (site) {
       if (creep.build(site) === ERR_NOT_IN_RANGE) creep.moveTo(site, { reusePath: 5 });
     } else if (c) {

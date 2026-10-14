@@ -20,18 +20,11 @@ module.exports = function (creep) {
     if (c && creep.upgradeController(c) === ERR_NOT_IN_RANGE) creep.moveTo(c);
     return;
   }
-  const cont = creep.pos.findClosestByPath(FIND_STRUCTURES, {
-    filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0
-  });
-  if (cont) {
-    const r = creep.withdraw(cont, RESOURCE_ENERGY);
-    if (r === ERR_NOT_IN_RANGE) creep.moveTo(cont);
+  // STORAGE ONLY: no containers, no spawn, no harvesting. Idle if storage is dry.
+  const storage = creep.room.storage;
+  if (storage && storage.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
+    const r = creep.withdraw(storage, RESOURCE_ENERGY);
+    if (r === ERR_NOT_IN_RANGE) creep.moveTo(storage);
     return;
-  }
-  const r = spawn && creep.withdraw(spawn, RESOURCE_ENERGY);
-  if (r === ERR_NOT_IN_RANGE) creep.moveTo(spawn);
-  else if (r === ERR_NOT_ENOUGH_RESOURCES || !spawn) {
-    const src = creep.pos.findClosestByPath(FIND_SOURCES);
-    if (src && creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src);
   }
 };

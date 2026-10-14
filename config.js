@@ -22,6 +22,60 @@ const _tgtCache = {};
 
 function spawn(room) { return room.find(FIND_MY_SPAWNS)[0]; }
 
+// ===================== §6 creep-replacement lead time (FOCUS 1) ====================
+// Replacement lead time = spawnDuration + travelEstimate + safetyMargin.
+// A replacement is pre-queued when a harvester's ticksToLive <= leadTime, so the
+// successor is already spawning + walking before the old one dies (no source-dark
+// window). AUDIT_GAPS.md FOCUS 1 found that nothing previously computed spawn
+// duration or travel — nearDeath only *suppressed* spawning — so the source stayed
+// dark for the whole spawn+walk gap.
+//
+// Spawn duration per body part = the game constant CREEP_SPAWN_TIME. Verified against
+// the official Screeps constants reference (docs.screeps.com): CREEP_SPAWN_TIME = 3
+// ("Spawn time: 3 ticks per each body part"). A 3-part [W,C,M] body spawns in 9 ticks,
+// a 6-part 2-WORK body in 18 ticks. NOTE: AUDIT_GAPS.md FOCUS 1 wrongly claims "30 ticks
+// per body part" with 90/180-tick examples (off by 10x); the project brief FIX13_BRIEF.md
+// already uses body.length * 3 (correct). We read the live global CREEP_SPAWN_TIME with
+// a fallback of 3 so the lead time matches the engine. leadTime ~= spawn + travel + 50
+// ~= 9-18 + ~40 + 50 ~= 100, i.e. right around the old fixed HARVEST_REPLACE_TTL=100,
+// now derived instead of guessed. (On a non-standard server the global adapts.)
+const SPAWN_TICKS_PER_PART = (typeof CREEP_SPAWN_TIME !== 'undefined') ? CREEP_SPAWN_TIME : 3;
+const LEAD_SAFETY_MARGIN = 50;          // safety margin in ticks (per spec)
+const LEAD_TRAVEL_CEILING = 120;        // generous upper bound for the cheap pre-filter
+const LEAD_DEFAULT_TRAVEL = 40;         // fallback travel estimate when no source resolves
+
+// One-way travel estimate (ticks) from the spawn to a harvester's work post.
+// Only invoked for near-death creeps (see isHarvesterExpiring's ceiling pre-filter),
+// so a few bounded path searches per tick are acceptable.
+function estimateTravelTicks(creep, spawnObj) {
+  if (!spawnObj || !creep || !creep.pos) return LEAD_DEFAULT_TRAVEL;
+  let workPos = null;
+  const src = creep.memory && creep.memory.sourceId ? Game.getObjectById(creep.memory.sourceId) : null;
+  if (src && src.pos) workPos = src.pos;            // replacement takes over THIS post
+  else workPos = creep.pos;                         // approximate work area
+  const path = spawnObj.pos.findPathTo(workPos, { maxOps: 64 });
+  if (path && path.length) return path.length;
+  const range = spawnObj.pos.getRangeTo(workPos);
+  return range || LEAD_DEFAULT_TRAVEL;
+}
+
+// Full lead time for a creep: spawn duration (body parts x ticks/part) + travel + margin.
+function computeLeadTime(creep, spawnObj) {
+  const parts = (creep.body && creep.body.length) ? creep.body.length : 3;
+  return parts * SPAWN_TICKS_PER_PART + estimateTravelTicks(creep, spawnObj) + LEAD_SAFETY_MARGIN;
+}
+
+// Cheap pre-filter: true only if the creep can possibly be within its lead time, so we
+// skip the path search for healthy (high-TTL) harvesters. Ceiling =
+// spawnDuration + margin + generous travel bound; only near-death creeps pass.
+function isHarvesterExpiring(creep, spawnObj) {
+  const ttl = creep.ticksToLive;
+  if (typeof ttl !== 'number' || ttl < 0) return false;
+  const parts = (creep.body && creep.body.length) ? creep.body.length : 3;
+  if (ttl > parts * SPAWN_TICKS_PER_PART + LEAD_SAFETY_MARGIN + LEAD_TRAVEL_CEILING) return false;
+  return ttl <= computeLeadTime(creep, spawnObj);
+}
+
 function getOwnedRooms() {
   const rooms = [];
   for (const name in Game.rooms) {
@@ -281,7 +335,7 @@ function _computeTargets(room) {
     // (filled>0), before source1 was online: those 3 upgraders drained the 300-cap bank
     // against only ~50/tick income, starving the builders mid-build and locking source1
     // dark forever. Once RCL3 is reached, drop to u1 — a single WORK keeps the controller
-    targets.upgrader = haveContainer ? (srcContainersBuilt >= 2 ? (controller && controller.level < 3 ? 3 : 1) : 1) : 0;
+    targets.upgrader = haveContainer ? (srcContainersBuilt >= 2 ? (controller && controller.level < 3 ? 5 : 2) : 1) : 0;
     targets.builder = 4; // ramp the far-container build: 2 builders crawl the 5000-site (2 build/tick =
                        // ~40 min); 4 builders (4 WORK = 8 build/tick, ~10 min) finish source1's container
                        // fast enough that RCL2 doesn't downgrade-risk while waiting. Funded
@@ -301,12 +355,10 @@ function _computeTargets(room) {
       .reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p.type === WORK).length : 0), 0)
       + Object.values(Game.creeps).filter(c => c.memory.role === 'remoteharvester')
         .reduce((n, c) => n + c.body.filter(p => p.type === WORK).length, 0);
-    targets.hauler = filled > 0 ? Math.min(4, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
-    // Expansion: claim the room directly to the east (the chosen expansion
-    // direction). Field at most one claimer per target, and only when the home
-    // bank has recovered (>=400) so the claim doesn't starve RCL3 operations
-    // (claimer body costs 350). The claimer claims + reserves the controller to
-    // hold the room; remote harvesters are sent later once it is ours.
+    targets.hauler = filled > 0 ? Math.min(8, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
+    // Expansion: claim the first unclaimed room from Memory.rooms (set by main.js
+    // expansion logic, which scans all 8 directions). Falls back to eastNeighbor
+    // if no memory target exists.
     const eastRoom = eastNeighbor(room.name);
     let expansionTarget = null;
     // Expansion: claim the room directly to the east once the home is solid — gate to
@@ -314,12 +366,29 @@ function _computeTargets(room) {
     // reserves the eastern neighbor; only field one at a time. (A 2-source room has no
     // cross-room remote-harvester; this claimer is the only outpost path, and only fires
     // when the home can support it.)
-    if (eastRoom && controller && controller.level >= 4 && room.energyAvailable >= 500) {
-      const er = Game.rooms[eastRoom];
-      const alreadyClaimed = !!(er && er.controller && er.controller.my);
-      const inTransit = Object.values(Game.creeps)
-        .some(c => c.memory.role === 'claimer' && c.memory.targetRoom === eastRoom);
-      if (!alreadyClaimed && !inTransit) expansionTarget = eastRoom;
+    if (controller && controller.level >= 4 && room.energyAvailable >= 500) {
+      // Check Memory.rooms for any 'expansion' target (main.js scans all 8 directions)
+      // Guard: only set expansionTarget if NO claimer exists at all — prevents the loop
+      // from picking a SECOND expansion room when a claimer is already en route to the first.
+      const anyClaimer = Object.values(Game.creeps).some(c => c.memory.role === 'claimer');
+      if (!anyClaimer && Memory.rooms) {
+        for (const name in Memory.rooms) {
+          const mr = Memory.rooms[name];
+          if (mr.stage === 'expansion') {
+            const r = Game.rooms[name];
+            const alreadyClaimed = !!(r && r.controller && r.controller.my);
+            if (!alreadyClaimed) { expansionTarget = name; break; }
+          }
+        }
+      }
+      // Fall back to eastNeighbor if no memory target found
+      if (!expansionTarget && eastRoom) {
+        const er = Game.rooms[eastRoom];
+        const alreadyClaimed = !!(er && er.controller && er.controller.my);
+        const inTransit = Object.values(Game.creeps)
+          .some(c => c.memory.role === 'claimer' && c.memory.targetRoom === eastRoom);
+        if (!alreadyClaimed && !inTransit) expansionTarget = eastRoom;
+      }
     }
     targets.claimer = expansionTarget ? 1 : ((controller && !controller.my) ? 1 : 0);
     if (expansionTarget) targets.claimerTarget = expansionTarget;
@@ -338,7 +407,7 @@ function _computeTargets(room) {
       const hasExt = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_EXTRACTOR }).length > 0;
       if (hasExt) targets.miner = 1;
     }
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 5) : (room.controller && room.controller.level >= 4 ? 1 : 0);
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 5) : 0;
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 3) : 0;
     // Repairers only after the container+hauler loop is live (a no-WORK repairer
     // pre-container just drains the spawn's pull; repair the existing rampart later).
@@ -353,7 +422,7 @@ function _computeTargets(room) {
     targets.hauler = filled > 0 ? Math.ceil(filled / 2) : 0;
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = 0;
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 3) : 1;
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 3) : 0;
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 2) : 0;
     targets.miner = 0;
     targets.repairer = 0;
@@ -368,7 +437,7 @@ function _computeTargets(room) {
     targets.claimer = (controller && !controller.my) ? 1 : 0;
     targets.looter = 0;
     targets.miner = 0;
-    targets.defender = hostilesCount ? Math.min(hostilesCount, 4) : 1;
+    targets.defender = hostilesCount ? Math.min(hostilesCount, 4) : 0;
     targets.attacker = hostilesCount ? Math.min(Math.ceil(hostilesCount / 2), 2) : 0;
     targets.repairer = hasFort ? 1 : 0;
   } else {
@@ -379,7 +448,7 @@ function _computeTargets(room) {
     targets.claimer = 0;
     targets.looter = 0;
     targets.miner = 0;
-    targets.defender = 1;
+    targets.defender = 0;
     targets.attacker = 0;
     targets.repairer = 0;
   }
@@ -404,7 +473,7 @@ function reportStatus(room) {
   if (Memory._statusTick && Game.time - Memory._statusTick < 50) return;
   Memory._statusTick = Game.time;
   const counts = {};
-  const roomCreeps = Object.values(Game.creeps).filter(c => c.room.name === room.name);
+  const roomCreeps = Object.values(Game.creeps).filter(c => c.pos.roomName === room.name);
   for (const c of roomCreeps) counts[c.memory.role] = (counts[c.memory.role] || 0) + 1;
   const targets = getTargets(room);
   const deficit = [];
@@ -469,7 +538,6 @@ function manageSpawns(room) {
   // Harvester resilience state (recovery logic below consumes these).
   // Use the runtime's real BODYPART_COST so the thresholds are correct even
   // on servers with non-standard body part prices.
-  const HARVEST_REPLACE_TTL = 100;
   const prodBody = [WORK, CARRY, MOVE];
   const bodyCost = b => b.reduce((n, p) => n + (BODYPART_COST[p] || 0), 0);
   const prodCost = bodyCost(prodBody);
@@ -479,7 +547,20 @@ function manageSpawns(room) {
   const functionalHarvesterCount = roomHarvesters.filter(hasCarry).length;
   const nonFunctionalHarvester = liveHarvesterCount > 0 && functionalHarvesterCount === 0
     ? roomHarvesters.find(c => !hasCarry(c)) : null;
-  const nearDeath = roomHarvesters.some(c => typeof c.ticksToLive === 'number' && c.ticksToLive < HARVEST_REPLACE_TTL);
+  // §6 FOCUS 1: a harvester is "expiring" (needs a pre-queued replacement) when its
+  // ticksToLive is within the replacement lead time = spawnDuration + travel + margin.
+  // This replaces the old fixed HARVEST_REPLACE_TTL=100 (which under-led large bodies
+  // and over-led small ones). Each expiring harvester gets a successor queued ahead of
+  // its death so the source stays worked (no source-dark window).
+  const expiringHarvesters = roomHarvesters.filter(c => isHarvesterExpiring(c, s));
+  const nearDeath = expiringHarvesters.length > 0;
+  // Harvesters whose death is imminent AND which don't yet have a replacement queued.
+  // expiringUnreplaced raises the candidate-loop deficit (§6) so a successor is spawned,
+  // and the lowest-TTL-first sort feeds the linkage that ties one successor to one dying
+  // post (FOCUS 2: avoid double-counting an old creep and its replacement as two slots).
+  const expiringUnreplaced = expiringHarvesters
+    .filter(c => !c.memory.replacementQueued)
+    .sort((a, b) => (a.ticksToLive || 0) - (b.ticksToLive || 0));
   if (functionalHarvesterCount > 0) Memory._crisisHarvester = false;
 
   const targets = getTargets(room);
@@ -487,7 +568,16 @@ function manageSpawns(room) {
   const controller = room.controller;
   const stage = getRoomStage(room);
   const counts = {};
-  for (const name in Game.creeps) { const r = Game.creeps[name].memory.role; counts[r] = (counts[r] || 0) + 1; }
+  for (const name in Game.creeps) {
+    const c = Game.creeps[name];
+    // Use pos.roomName — c.room is undefined for creeps in fog-of-war expansion rooms, which CRASHES manageSpawns
+    if (c.pos.roomName !== room.name) continue;
+    // §6 FOCUS 2: clear stale `replacing` linkage to a dead predecessor
+    // (the successor outlived the dying creep it was replacing).
+    if (c.memory.replacing && !Game.creeps[c.memory.replacing]) delete c.memory.replacing;
+    const r = c.memory.role;
+    counts[r] = (counts[r] || 0) + 1;
+  }
   // Built source containers (the income unlock). `filled` from getTargets is not in
   // this scope, so compute the container count here (a built container, even empty,
   // means harvesters can dump at the source and the upgrader is affordable again).
@@ -501,14 +591,18 @@ function manageSpawns(room) {
   //    -> if energy can't yet afford prodCost, recycle a victim (a non-harvester
   //    >=2 parts, OR the non-functional harvester itself) to raise it, then
   //    spawn; else emit a CRISIS log (unrecoverable w/o player aid).
-  const needRescue = functionalHarvesterCount === 0
-    || (nearDeath && liveHarvesterCount <= (targets.harvester || 0));
+  const needRescue = functionalHarvesterCount === 0;
+  // DEBUG: trace crisis path decision points
+  console.log('[CRISIS] t=' + Game.time + ' room=' + room.name + ' fHC=' + functionalHarvesterCount + ' lHC=' + liveHarvesterCount + ' needRescue=' + needRescue + ' tgtHarv=' + (targets.harvester || 0) + ' energyAvail=' + room.energyAvailable + ' s.energy=' + s.energy + ' prodCost=' + prodCost);
   if (needRescue && (targets.harvester || 0) > 0) {
+    console.log('[CRISIS] entering rescue branch, energyAvail=' + room.energyAvailable + ' < prodCost=' + prodCost + '? ' + (room.energyAvailable < prodCost));
     if (room.energyAvailable < prodCost) {
+      console.log('[CRISIS] low-energy path: recyling candidates, fHC=' + functionalHarvesterCount);
       if (functionalHarvesterCount === 0 && typeof s.recycleCreep === 'function') {
         const victims = Object.values(Game.creeps)
-          .filter(c => c.room.name === room.name && c.body.length >= 2 &&
+          .filter(c => c.pos.roomName === room.name && c.body.length >= 2 &&
             (c.memory.role !== 'harvester' || !hasCarry(c)));
+        console.log('[CRISIS] victims found: ' + victims.length + ' (' + victims.map(v=>v.name+':'+v.memory.role).join(',') + ')');
         if (victims.length) {
           const victim = victims.reduce((a, b) => (a.body.length > b.body.length ? a : b));
           if (s.recycleCreep(victim) === OK) {
@@ -533,7 +627,8 @@ function manageSpawns(room) {
        // of carry-trip 1-WORK at 200. (functionalHarvesterCount === 0 stays the
        // true crisis path, still allowed on a 1-WORK emergency prodBody below.)
         let body = buildBody('harvester', room.energyAvailable);
-        if (!body.length) body = prodBody;
+        console.log('[CRISIS] buildBody returned', body.length ? body.map(p=>p+':'+BODYPART_COST[p]).join('/') : 'EMPTY', 'cost=' + bodyCost(body), 'workCount=' + body.filter(p => p === WORK).length, 'vs s.energy=' + s.energy);
+        if (!body.length || bodyCost(body) > s.energy) body = prodBody;
         // Keep the source worked even when the bank is low: allow a 1-WORK
         // emergency replacement while functional harvesters are critically few
         // (<4), so dying harvesters get replaced instead of the count collapsing.
@@ -542,6 +637,7 @@ function manageSpawns(room) {
         // via the crisis path above.)
         const workCount = body.filter(p => p === WORK).length;
         if (workCount < 2 && functionalHarvesterCount >= 4) {
+          console.log('[CRISIS] early return: workCount=' + workCount + ' <2 but functionalHarvesterCount=' + functionalHarvesterCount + ' >=4');
           return;
         }
       const memory = { role: 'harvester' };
@@ -552,10 +648,17 @@ function manageSpawns(room) {
         if (n < min) { min = n; bestSrc = src; }
       }
       if (bestSrc) memory.sourceId = bestSrc.id;
+      console.log('[CRISIS] createCreep: body=' + body.join('/') + ' bodyCost=' + bodyCost(body) + ' spawnEnergy=' + s.energy + ' roomEnergy=' + room.energyAvailable);
       const result = s.createCreep(body, 'harvester' + Game.time, memory);
-      if (typeof result !== 'string') console.log('spawn failed:', result, 'for harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
-      else { console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable); Memory._crisisHarvester = false; }
-      return;
+      console.log('[CRISIS] createCreep result=' + result);
+      if (typeof result !== 'string') {
+        console.log('spawn failed:', result, 'for harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
+        // DON'T return — fall through to normal spawning so the hauler can be spawned instead
+      } else {
+        console.log('spawned', result, 'role harvester emergency', 'body', body.join('/'), 'energy', room.energyAvailable);
+        Memory._crisisHarvester = false;
+        return; // spawn is now busy, must return
+      }
     }
   }
 
@@ -711,10 +814,14 @@ function manageSpawns(room) {
   // affordable — a death-spiral. Once the bank can fund a 2-WORK harvester (306),
   // recycle the weakest living harvester so a stronger one replaces it, lifting
   // income to source-saturation (10/tick) and letting the bank climb to a claimer.
-  if (room.energyAvailable >= 350 && typeof s.recycleCreep === 'function') {
+  // BUG FIX: added liveHarvesterCount >= 2 guard — the crisis recovery path spawns
+  // a 1-WORK prodBody emergency harvester, and this block (with no count guard) was
+  // IMMEDIATELY recycling it. Add the same surplus guard as the block below.
+  const liveHarvesterCountCheck = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.pos.roomName === room.name).length;
+  if (room.energyAvailable >= 350 && !needRescue && liveHarvesterCountCheck >= 2 && typeof s.recycleCreep === 'function') {
     const weakHr = Object.values(Game.creeps)
-      .filter(c => c.memory.role === 'harvester' && c.room.name === room.name &&
-        c.body.filter(p => p.type === WORK).length < 2);
+      .filter(c => c.memory.role === 'harvester' && c.room.name === room.name
+        && c.body.filter(p => p.type === WORK).length < 2);
     if (weakHr.length) {
       weakHr.sort((a, b) => (a.ticksToLive || 0) - (b.ticksToLive || 0));
       const victim = weakHr[0];
@@ -730,11 +837,11 @@ function manageSpawns(room) {
   // Once the bank can fund a 2-WORK harvester (306) AND there is a surplus harvester
   // above the needed functional count, recycle the weakest (<2 WORK) harvester so a
   // stronger one takes its slot — lifting income to source saturation (10/tick).
-  if (room.energyAvailable >= 350 && typeof s.recycleCreep === 'function') {
+  if (room.energyAvailable >= 350 && !needRescue && typeof s.recycleCreep === 'function') {
     const weakHr = Object.values(Game.creeps)
-      .filter(c => c.memory.role === 'harvester' && c.room.name === room.name &&
+      .filter(c => c.memory.role === 'harvester' && c.pos.roomName === room.name &&
         c.body.filter(p => p.type === WORK).length < 2);
-    const roomHr = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.room.name === room.name);
+    const roomHr = Object.values(Game.creeps).filter(c => c.memory.role === 'harvester' && c.pos.roomName === room.name);
     if (weakHr.length && roomHr.length > 1) {
       weakHr.sort((a, b) => (a.ticksToLive || 0) - (b.ticksToLive || 0));
       const victim = weakHr[0];
@@ -753,8 +860,12 @@ function manageSpawns(room) {
   // evident) + bank>=400 (can afford the bigger replacement); recycle the smallest
   // hauler (recycle if at the spawn for the refund, else suicide it) so a 3-CARRY+
   // body spawns and actually lifts the harvest. Keep >=2 haulers draining.
+  // BUG FIX: only upsize when hauler count is AT/ABOVE target. When below target
+  // (e.g. 5/6) we need MORE haulers — recycling one here kills a hauler AND returns,
+  // blocking the 6th hauler spawn entirely. The spawn stays idle forever.
   const cE = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) }).reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
-  if (!needRescue && cE >= 1500 && room.energyAvailable >= 400 && typeof s.recycleCreep === 'function') {
+  console.log('[MANAGE] cE=' + cE + ' energyAvail=' + room.energyAvailable + ' needRescue=' + needRescue + ' hauler=' + (counts.hauler || 0) + '/' + (targets.hauler || 0));
+  if (!needRescue && cE >= 1500 && room.energyAvailable >= 400 && (counts.hauler || 0) >= (targets.hauler || 0) && typeof s.recycleCreep === 'function') {
     const liveHaulers = Object.values(Game.creeps).filter(c => c.memory.role === 'hauler' && c.room.name === room.name);
     const smallHaulers = liveHaulers.filter(c => c.body.filter(p => p.type === CARRY).length < 2 && c.body.length >= 2);
     if (smallHaulers.length && liveHaulers.length >= 2) {
@@ -809,7 +920,10 @@ function manageSpawns(room) {
   // If a role has reached its target (need <= 0), priority becomes 100 (lowest)
   const candidates = [];
   for (const role of ROLES) {
-    const need = (targets[role] || 0) - (counts[role] || 0);
+    let need = (targets[role] || 0) - (counts[role] || 0);
+    // §6 FOCUS 1: an expiring harvester is not permanent capacity. Pre-queue its
+    // replacement (raise the deficit) instead of waiting for it to die.
+    if (role === 'harvester' && expiringUnreplaced.length) need += expiringUnreplaced.length;
     if (need <= 0) continue; // at target — effectively priority 100
     // upgrader gets a boost when controller level is low
     const upgBoost = (role === 'upgrader' && controller && controller.level < 2) ? 50 : 0;
@@ -817,9 +931,11 @@ function manageSpawns(room) {
   }
   // Sort by priority ascending (0 = highest), then by need descending for ties
   candidates.sort((a, b) => a.priority - b.priority || b.need - a.need);
+  console.log('[MANAGE] candidates=' + candidates.map(c => c.role + ':' + c.priority + '+' + c.need).join(','));
 
   // Try to spawn the highest-priority role that can afford a body
   for (const { role } of candidates) {
+    console.log('[MANAGE] trying role=' + role);
      // Recovery mode: below a 500 bank this 1-source economy can't sustain both
      // income and drain roles — each upgrader/builder spawn (~250-300) crashes the
      // bank back to ~110, so harvesters/haulers never reach the 2-WORK/2-CARRY
@@ -828,37 +944,19 @@ function manageSpawns(room) {
       // upgrader the gate starves) NEVER reaches 500 -> permanent deadlock. On 2+ sources
       // (~30/tick) the builder+upgrader are sustainable, so exempt them here; 1-source
       // stays gated to avoid the old bank-crash death spiral.
-       if (role === 'looter') continue; // drop-free room: a 505 looter body is pure upkeep drain
-       if (room.energyAvailable < 500 && srcCount < 2 && role !== 'harvester' && role !== 'hauler') continue;
-      // Defer claimers until the home tower exists: a 650 body on the 800-cap bank
-      // dips it to ~150 and starves the 600-tower build. E47S42's reservation lasts
-      // 5000 ticks (~83 min), so this pause is well within the grace window.
-      if (role === 'claimer' && !room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).length) continue;
+       if (role === 'looter') { console.log('[MANAGE] skip looter'); continue; }
+       if (room.energyAvailable < 500 && srcCount < 2 && role !== 'harvester' && role !== 'hauler') { console.log('[MANAGE] skip ' + role + ': energy gate (avail=' + room.energyAvailable + ' src=' + srcCount + ')'); continue; }
+      // Defer claimers until the home tower exists
+      if (role === 'claimer' && !room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).length) { console.log('[MANAGE] skip claimer: no tower'); continue; }
       if (role === 'claimer') {
        const cb = buildBody('claimer', room.energyAvailable);
-       if (cb.length === 0 || bodyCost(cb) > room.energyAvailable) continue;
+       if (cb.length === 0 || bodyCost(cb) > room.energyAvailable) { console.log('[MANAGE] skip claimer: body=' + cb.join('/') + ' cost=' + bodyCost(cb)); continue; }
      }
-    // No energy gates on income/drain roles: buildBody already returns [] below
-    // prodCost (200) for harvesters/builders, so they only spawn when affordable.
-    // With the extensions being filled the pool climbs to 550, so buildBody scales
-    // harvesters/builder up to 2-WORK automatically as energyAvailable rises.
     const body = buildBody(role, room.energyAvailable);
-    if (body.length === 0) continue;
-    // Reserve guard: never drain the bank below 50. At RCL1 the bank hard-caps at 300, so
-    // a 300-cost body drains it to 0 — the cold-start crash that stalled the source
-    // containers. Skip this spawn if the body would leave the bank below the recovery
-    // floor (income needs ~50 banked to fund the next body). 50 is tight enough to still
-    // allow the 250-cost upgrader (300->50, recoverable in a few ticks once both sources
-    // run) while blocking any spawn that would zero the bank.
-    if (bodyCost(body) > room.energyAvailable - 50) continue;
-    // Pre-container: don't replace a lost harvester with another 1-WORK body while
-    // functional harvesters still run — a 1-WORK spawn (~200) just resets the bank
-    // to ~0 and perpetuates the carry-trip thrash, blocking the climb to 290+.
-    // Wait for a 2-WORK body (>=290) the live harvesters are banking toward.
-     // Pre-container: keep the source worked by allowing 1-WORK replacements
-     // whenever functional harvesters drop below 4 (so the count can't collapse),
-     // but bank for a >=2-WORK body when we have enough harvesters.
-     if (role === 'harvester' && room.energyAvailable < 290 && functionalHarvesterCount >= 4) continue;
+    console.log('[MANAGE] buildBody(' + role + ',' + room.energyAvailable + ') = ' + (body.length ? body.join('/') : 'EMPTY') + ' cost=' + bodyCost(body) + ' spawnEnergy=' + s.energy);
+    if (body.length === 0) { console.log('[MANAGE] skip ' + role + ': empty body'); continue; }
+    if (bodyCost(body) > room.energyAvailable - 50) { console.log('[MANAGE] skip ' + role + ': bodyCost(' + bodyCost(body) + ') > avail(' + room.energyAvailable + ')-50=' + (room.energyAvailable-50)); continue; }
+    if (role === 'harvester' && room.energyAvailable < 290 && functionalHarvesterCount >= 4) { console.log('[MANAGE] skip harvester: pre-container gate'); continue; }
     // Pick best source for harvesters
     const memory = { role };
     if (role === 'claimer' && targets.claimerTarget) memory.targetRoom = targets.claimerTarget;
@@ -870,12 +968,32 @@ function manageSpawns(room) {
         if (n < min) { min = n; bestSrc = src; }
       }
       if (bestSrc) memory.sourceId = bestSrc.id;
+      // §6: link this successor to the soonest-dying harvester (lowest TTL) that has
+      // not yet been queued, and take over its post so the source never goes dark.
+      const dying = expiringUnreplaced[0];
+      if (dying) {
+        memory.replacing = dying.name;
+        if (dying.memory.sourceId) memory.sourceId = dying.memory.sourceId;
+      }
     }
+    console.log('[MANAGE] spawning ' + role + ': body=' + body.join('/') + ' bodyCost=' + bodyCost(body) + ' spawnEnergy=' + s.energy + ' roomEnergy=' + room.energyAvailable);
     const result = s.createCreep(body, role + Game.time, memory);
+    console.log('[MANAGE] createCreep(' + role + ') result=' + result);
     if (typeof result !== 'string') console.log('spawn failed:', result, 'for', role, 'energy', room.energyAvailable);
-    else console.log('spawned', result, 'role', role, 'energy', room.energyAvailable, 'spawning', s.spawning);
+    else {
+      console.log('spawned', result, 'role', role, 'energy', room.energyAvailable, 'spawning', s.spawning);
+      // §6: mark the expiring harvester as having a successor queued so the planner
+      // does not double-queue a second replacement for the same dying post, and log
+      // the pre-queue so observers can confirm lead-time pre-queueing is active.
+      if (role === 'harvester' && memory.replacing && Game.creeps[memory.replacing]) {
+        Game.creeps[memory.replacing].memory.replacementQueued = true;
+        console.log('[LEADTIME] pre-queued harvester ' + result + ' for ' + memory.replacing +
+          ' (old ttl=' + Game.creeps[memory.replacing].ticksToLive + ', lead=' + computeLeadTime(Game.creeps[memory.replacing], s) + ')');
+      }
+    }
     return;
   }
+  console.log('[MANAGE] NO candidate spawned — all skipped or no candidates');
 }
 
-module.exports = { buildBody, getTargets, manageSpawns, allies, getOwnedRooms, getHomeRoom, getRoomStage, getRoomPriority };
+module.exports = { buildBody, getTargets, manageSpawns, computeLeadTime, estimateTravelTicks, allies, getOwnedRooms, getHomeRoom, getRoomStage, getRoomPriority };

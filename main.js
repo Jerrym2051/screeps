@@ -11,6 +11,7 @@ const roles = {
   looter: require('role.looter'),
   miner: require('role.miner'),
   defender: require('role.defender'),
+  attacker: require('role.attacker'),
   repairer: require('role.repairer'),
 };
 
@@ -109,7 +110,8 @@ module.exports.loop = function () {
     if (_prof) _prof.marks.push('creepStart:' + Game.cpu.getUsed());
     for (const name in Game.creeps) {
       const creep = Game.creeps[name];
-      if (creep.room.name !== roomName) continue;
+      // Use pos.roomName — creep.room is undefined for creeps in fog-of-war (e.g. expansion rooms)
+      if (creep.pos.roomName !== roomName) continue;
       if (!creep.memory.role && creep.memory.memory && creep.memory.memory.role) {
         creep.memory.role = creep.memory.memory.role;
         if (creep.memory.memory.sourceId) creep.memory.sourceId = creep.memory.memory.sourceId;
@@ -128,8 +130,12 @@ module.exports.loop = function () {
       const fn = roles[creep.memory.role];
       let _cb = 0;
       if (_prof) _cb = Game.cpu.getUsed();
-      if (fn) fn(creep);
-      else creep.suicide();
+      try {
+        if (fn) fn(creep);
+        else creep.suicide();
+      } catch (e) {
+        console.log('[MAIN] role ' + (creep.memory.role || '?') + ' threw for ' + creep.name + ': ' + e.message);
+      }
       if (_prof) {
         const d = Game.cpu.getUsed() - _cb;
         const _cmax = Memory._creepMax || { cost: 0 };
@@ -140,24 +146,15 @@ module.exports.loop = function () {
     }
     if (_prof) _prof.marks.push('creepEnd:' + Game.cpu.getUsed());
 
-    // 2b. run claimer for this room if controller is not ours
-    if (room.controller && !room.controller.my) {
-      // find any claimers in this room and run them
-      const claimers = Object.values(Game.creeps).filter(c => c.memory.role === 'claimer' && c.room.name === roomName);
-      for (const c of claimers) {
-        if (!c.memory.role && c.memory.memory && c.memory.memory.role) {
-          c.memory.role = c.memory.memory.role;
-          delete c.memory.memory;
-        }
-        const fn = roles[c.memory.role];
-        if (fn) fn(c);
-      }
-    }
+    // 2b. claimers are already dispatched by the general creep loop (2a) above.
+    // A separate claimer pass here caused double-execution in the target room,
+    // which let a stale moveTo(c) path (cached from the home-room side of the
+    // border) override the cross and bounce the claimer back across the exit.
 
     // 3. spawn missing roles in this room
     if (room.find(FIND_MY_SPAWNS).length > 0) {
       if (_prof) _prof.marks.push('spawnStart:' + Game.cpu.getUsed());
-      config.manageSpawns(room);
+      try { config.manageSpawns(room); } catch (e) { console.log('[MAIN] manageSpawns threw:', e.message, 'stack:', e.stack); }
       if (_prof) _prof.marks.push('spawnEnd:' + Game.cpu.getUsed());
     }
 

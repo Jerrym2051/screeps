@@ -1,68 +1,103 @@
 // role.hauler.js - logistics.
-// Topology:
-//  - harvest-buffer containers (adjacent to a source) are DRAINED: harvesters
-//    dump into them, the hauler pulls energy out toward the bank.
-//  - spawn-side overflow containers (not adjacent to a source) are FILLED: they
-//    hold surplus when the bank (spawn + extensions) is full.
-// A container is only ever a source OR a sink in a given trip, never both, which
-// kills the sit-and-thrash bounce where a hauler withdrew and deposited back into
-// the same source-area container.
+// Two tiers:
+//  - Large haulers (>= 6 body parts): full container <-> spawn/extensions/storage loop.
+//  - Emergency bootstrap haulers (< 6 parts): short trips storage <-> spawn/extensions
+//    only, skipping containers. Keeps the starved spawn banked so it can build bigger creeps.
+// Sticks with a chosen container until it can no longer fill the hauler's free
+// capacity, avoiding thrash between targets picked by other haulers.
 module.exports = function (creep) {
-  const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
-  const sources = creep.room.find(FIND_SOURCES);
   const used = creep.store.getUsedCapacity(RESOURCE_ENERGY);
-  const free = creep.store.getFreeCapacity(RESOURCE_ENERGY);
+  const isSmall = creep.body.length < 6;
 
-  const usable = s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner);
-  // matches the harvester's dump radius so any container a harvester can deposit
-  // to is treated as a harvest buffer (drain target), not an overflow (fill target).
-  const isBuffer = c => sources.some(s => c.pos.getRangeTo(s) <= 3);
-  const roomCont = () => creep.room.find(FIND_STRUCTURES, { filter: usable });
-
-  // --- Deposit mode: empty the carry. ---
   if (used > 0) {
+    // DEPOSIT: top off spawn/extensions, most-empty (most free capacity) first.
     const isBank = s => (s.structureType === STRUCTURE_EXTENSION || s.structureType === STRUCTURE_SPAWN) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
-    // 1) top off the most-empty bank structure in range, then anywhere in the room.
-    const bank = (creep.pos.findInRange(FIND_MY_STRUCTURES, 3, { filter: isBank })
-      .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY))[0])
-      || (creep.room.find(FIND_MY_STRUCTURES, { filter: isBank })
-        .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY))[0]);
-    if (bank) { if (creep.transfer(bank, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(bank, { reusePath: 5 }); return; }
+    const banks = creep.pos.findInRange(FIND_MY_STRUCTURES, 3, { filter: isBank })
+      .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY));
 
-    // 2) Banks full: fund the tower (defense + auto-repair) ONLY from true surplus
-    //    (every harvest-buffer container full). On one source the tower's 21/tick
-    //    repair burn exceeds income and collapses the bank, so never feed it from a
-    //    fragile pool. cE>=1500 means both sources are flowing.
-    const tw = creep.room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
-    const cE = roomCont().reduce((n, c) => n + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
-    if (tw.length && cE >= 1500 && creep.room.energyAvailable >= 400) {
-      const t = tw.sort((a, b) => a.store.getFreeCapacity(RESOURCE_ENERGY) - b.store.getFreeCapacity(RESOURCE_ENERGY))[0];
-      if (creep.transfer(t, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(t, { reusePath: 5 });
+    // Try each in-range bank: deposit if adjacent, move if not yet adjacent,
+    // skip if a peer filled it since the find (ERR_FULL).
+    for (const b of banks) {
+      const res = creep.transfer(b, RESOURCE_ENERGY);
+      if (res === OK) return;                         // deposited
+      if (res === ERR_NOT_IN_RANGE) {                 // not adjacent — walk to it
+        creep.moveTo(b, { reusePath: 5 });
+        return;
+      }
+      // ERR_FULL: bank filled by a peer this tick, try the next in-range bank
+    }
+
+    // No in-range bank with space: go to the room-wide most-empty bank.
+    const roomBank = creep.room.find(FIND_MY_STRUCTURES, { filter: isBank })
+      .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY))[0];
+    if (roomBank) {
+      if (creep.transfer(roomBank, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(roomBank, { reusePath: 5 });
       return;
     }
 
-    // 3) Banks full: spill into the spawn-side overflow container closest to the
-    //    spawn. Never into a buffer (== the bounce source).
-    const spill = roomCont().filter(c => !isBuffer(c) && c.store.getFreeCapacity(RESOURCE_ENERGY) > 0 && c.id !== creep.memory.haulSrc)
-      .sort((a, b) => a.pos.getRangeTo(spawn) - b.pos.getRangeTo(spawn))[0];
-    if (spill) { if (creep.transfer(spill, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(spill, { reusePath: 5 }); return; }
+    // Banks full: dump to storage, then move on.
+    const storages = creep.room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (storages.length) {
+      if (creep.transfer(storages[0], RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(storages[0], { reusePath: 5 });
+      return;
+    }
 
-    // 4) No bank room and nowhere to spill: hold near the spawn and wait for a
-    //    builder/upgrader to create headroom. Dropping here only feeds looter churn.
+    // Everything full — hold near the spawn.
+    const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
     if (spawn && creep.pos.getRangeTo(spawn) > 1) creep.moveTo(spawn, { reusePath: 5 });
     return;
   }
 
-  // --- Withdraw mode: fill from the fullest harvest buffer, then drops, then harvest. ---
-  const buffers = roomCont().filter(c => isBuffer(c) && c.store.getUsedCapacity(RESOURCE_ENERGY) > 0);
-  if (buffers.length) {
-    const best = buffers.sort((a, b) => b.store.getUsedCapacity(RESOURCE_ENERGY) - a.store.getUsedCapacity(RESOURCE_ENERGY))[0];
-    creep.memory.haulSrc = best.id;
-    if (creep.withdraw(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(best, { reusePath: 5 });
+  // WITHDRAW
+  const free = creep.store.getFreeCapacity(RESOURCE_ENERGY);
+
+  // Emergency bootstrap: small haulers skip containers entirely and shuttle
+  // from storage to spawn/extensions. Short trips near the spawn so the
+  // starved bank gets energy fast and can build bigger haulers.
+  if (isSmall) {
+    const storages = creep.room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0 });
+    if (storages.length) {
+      const res = creep.withdraw(storages[0], RESOURCE_ENERGY);
+      if (res === ERR_NOT_IN_RANGE) creep.moveTo(storages[0], { reusePath: 5 });
+      return;
+    }
+    // No storage with energy — hold near spawn, can't help from containers.
+    const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
+    if (spawn && creep.pos.getRangeTo(spawn) > 1) creep.moveTo(spawn, { reusePath: 5 });
     return;
   }
-  const dropped = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, { filter: r => r.resourceType === RESOURCE_ENERGY && r.amount > 0 });
-  if (dropped) { if (creep.pickup(dropped) === ERR_NOT_IN_RANGE) { creep.moveTo(dropped, { reusePath: 5 }); } return; }
-  const src = creep.pos.findClosestByPath(FIND_SOURCES);
-  if (src) { if (creep.harvest(src) === ERR_NOT_IN_RANGE) creep.moveTo(src, { reusePath: 5 }); }
+
+  // Large hauler: pull from the fullest container. Once a target is chosen,
+  // stick with it until it can no longer fill the hauler's free capacity.
+
+  // Check current target — only abandon if it can't fill us completely.
+  if (creep.memory.targetId) {
+    const cur = Game.getObjectById(creep.memory.targetId);
+    if (cur && cur.structureType === STRUCTURE_CONTAINER &&
+        cur.store.getUsedCapacity(RESOURCE_ENERGY) >= free) {
+      if (creep.withdraw(cur, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cur, { reusePath: 5 });
+      return;
+    }
+    delete creep.memory.targetId;
+  }
+
+  // Current target is gone, drained, or no longer viable — pick the fullest.
+  const containers = creep.room.find(FIND_STRUCTURES, {
+    filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.store.getUsedCapacity(RESOURCE_ENERGY) > 0
+  }).sort((a, b) => b.store.getUsedCapacity(RESOURCE_ENERGY) - a.store.getUsedCapacity(RESOURCE_ENERGY));
+
+  for (const c of containers) {
+    const res = creep.withdraw(c, RESOURCE_ENERGY);
+    if (res === OK) {
+      creep.memory.targetId = c.id;
+      return;
+    }
+    if (res === ERR_NOT_IN_RANGE) {
+      creep.memory.targetId = c.id;
+      creep.moveTo(c, { reusePath: 5 });
+      return;
+    }
+    // ERR_NOT_ENOUGH_RESOURCES or other: container drained by a peer, try next
+  }
+  delete creep.memory.targetId;
 };
