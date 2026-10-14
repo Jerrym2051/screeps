@@ -1,5 +1,5 @@
 // config.js - body builder, population targets, spawn planner, multi-room manager
-const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','builder','attacker','looter','miner'];
+const ROLES = ['harvester','upgrader','claimer','defender','repairer','hauler','builder','attacker','looter','miner','remoteharvester','remotehauler','remotebuilder'];
 // Threat-model priority: 0 = highest, 100 = lowest. Lower = spawn first.
 const ROLE_PRIORITY = {
   harvester:  0,  // energy foundation — always first
@@ -9,6 +9,9 @@ const ROLE_PRIORITY = {
   builder:    5,  // container/income unlock — must beat the upgrader pre-RCL3
   upgrader:   6,  // permanent RCL/GCL climb (1 held for the downgrade timer)
   claimer:   10,  // claim new rooms (expansion — gated to RCL>=4 until the home can support it)
+  remoteharvester: 12, // north outpost income — secondary to the home backbone
+  remotehauler:    13, // north->home energy carry — keeps the outpost fed without starving home
+  remotebuilder:   14, // north infrastructure (roads/source container)
   defender:  15,  // room defense
   repairer:  20,  // ramparts/walls/roads
   attacker:  40,  // offense
@@ -141,6 +144,23 @@ function eastNeighbor(roomName) {
   return axis + p(num) + m[3] + p(parseInt(m[4]));
 }
 
+// Compass-north neighbor of a room name, zero-padded to the 2-digit screeps format.
+// N-axis rooms step +1 further north (N04 -> N05); S-axis rooms step -1 (S58 -> S57,
+// toward the north). Returns null if the result would wrap past the N/S axis (S01 ->
+// the equator), matching eastNeighbor's convention of not crossing the world axis.
+// The home room (W9S58)'s north neighbor is W9S57.
+function northNeighbor(roomName) {
+  const m = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+  if (!m) return null;
+  const axis = m[3], num = parseInt(m[4]);
+  let n;
+  if (axis === 'S') { n = num - 1; if (n < 1) return null; }   // S58 -> S57 (north); S1 wraps
+  else { n = num + 1; }                                          // N5 -> N6 (further north)
+  if (n > 125) return null;
+  const p = x => (x < 10 ? '0' + x : '' + x);
+  return m[1] + p(parseInt(m[2])) + axis + p(n);
+}
+
 function buildBody(role, budget) {
   budget = Math.max(0, budget - 10);
   if (budget <= 0) return [];
@@ -213,6 +233,24 @@ function buildBody(role, budget) {
   // required budget>=200, so at a starved bank (<200) buildBody returned [] and no
   // hauler ever spawned, leaving the source containers full and harvesters overflowing.
    // A [CARRY,MOVE] pair spawns at bank 100 and scales to carry 250 at 500+.
+   // Remote crews: each needs a carry buffer (CARRY) since their outpost room has no
+   // spawn to dump into, and enough MOVE to travel across the border at full speed.
+   // remoteharvester = 2W1C: ~4/tick per source (saturates the 10/tick remote source),
+   // drops on the ground so the remote hauler can carry it home.
+   if (role === 'remoteharvester') {
+     if (budget < 350) return [];
+     b.push(WORK, WORK, CARRY, MOVE, MOVE); return b;
+   }
+   // remotehauler = 2C: carry 100 home per trip. 2 MOVE keeps speed 1 when loaded.
+   if (role === 'remotehauler') {
+     if (budget < 200) return [];
+     b.push(CARRY, CARRY, MOVE, MOVE); return b;
+   }
+   // remotebuilder = 1W1C: builds north roads/source container, refilling from home.
+   if (role === 'remotebuilder') {
+     if (budget < 250) return [];
+     b.push(WORK, CARRY, MOVE, MOVE); return b;
+   }
    const isWork = ['builder','miner'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
@@ -239,8 +277,12 @@ function countRemoteSources(room) {
     const neighborName = m[1] + (parseInt(m[2]) + dx) + m[3] + (parseInt(m[4]) + dy);
     const neighbor = Game.rooms[neighborName];
     if (!neighbor || !neighbor.controller || !neighbor.controller.my) continue;
-    // Skip if neighbor has hostiles
-    if (defense.getHostiles(neighbor).length > 0) continue;
+    // Skip if neighbor has hostiles. NOTE: config.js must NOT require('defense') —
+    // defense.js requires config.js, so that would be a circular require (and defense
+    // captures config's exports before module.exports is assigned). A direct hostile
+    // scan here is cheap (only runs for visible owned neighbors, i.e. once we expand)
+    // and avoids the `defense is not defined` crash the moment a neighbor is claimed.
+    if (neighbor.find(FIND_HOSTILE_CREEPS).length > 0) continue;
     count += neighbor.find(FIND_SOURCES).length;
   }
   return count;
@@ -356,42 +398,61 @@ function _computeTargets(room) {
       + Object.values(Game.creeps).filter(c => c.memory.role === 'remoteharvester')
         .reduce((n, c) => n + c.body.filter(p => p.type === WORK).length, 0);
     targets.hauler = filled > 0 ? Math.min(8, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
-    // Expansion: claim the first unclaimed room from Memory.rooms (set by main.js
-    // expansion logic, which scans all 8 directions). Falls back to eastNeighbor
-    // if no memory target exists.
-    const eastRoom = eastNeighbor(room.name);
+    // Expansion: the home room's primary outpost is the NORTHERN neighbor (was east).
+    // Gate to RCL>=4 + a healthy bank so a ~810 claim body can't crash a recovering
+    // home. Field ONE claimer at a time: the spawn block below checks counts.claimer===0,
+    // and an idle claimer is re-targeted by manageSpawns. Once the north room is owned,
+    // the remote-crew dispatch takes over. (The claimer's exitDirTo already handles the
+    // TOP/north border; north is the home room's W9S58 -> W9S57 neighbor.)
+    const northRoom = northNeighbor(room.name);
     let expansionTarget = null;
-    // Expansion: claim the room directly to the east once the home is solid — gate to
-    // RCL>=4 so a 350-body claimer can't crash a recovering home. The claimer claims +
-    // reserves the eastern neighbor; only field one at a time. (A 2-source room has no
-    // cross-room remote-harvester; this claimer is the only outpost path, and only fires
-    // when the home can support it.)
     if (controller && controller.level >= 4 && room.energyAvailable >= 500) {
-      // Check Memory.rooms for any 'expansion' target (main.js scans all 8 directions)
-      // Guard: only set expansionTarget if NO claimer exists at all — prevents the loop
-      // from picking a SECOND expansion room when a claimer is already en route to the first.
-      const anyClaimer = Object.values(Game.creeps).some(c => c.memory.role === 'claimer');
-      if (!anyClaimer && Memory.rooms) {
+      // Primary: the directly-northern neighbor, if it is not already ours and no
+      // claimer is already en route to it (prevents a second claimer for the same room).
+      if (northRoom) {
+        const nr = Game.rooms[northRoom];
+        const alreadyClaimed = !!(nr && nr.controller && nr.controller.my);
+        const inTransit = Object.values(Game.creeps)
+          .some(c => c.memory.role === 'claimer' && c.memory.targetRoom === northRoom);
+        if (!alreadyClaimed && !inTransit) expansionTarget = northRoom;
+      }
+      // Fallback: if north is already ours, take the first 'expansion'-staged room from
+      // main.js's all-direction scan (skips rooms a claimer is already en route to).
+      if (!expansionTarget && Memory.rooms) {
+        const claimerTargets = Object.values(Game.creeps)
+          .filter(c => c.memory.role === 'claimer' && c.memory.targetRoom)
+          .map(c => c.memory.targetRoom);
         for (const name in Memory.rooms) {
           const mr = Memory.rooms[name];
           if (mr.stage === 'expansion') {
             const r = Game.rooms[name];
             const alreadyClaimed = !!(r && r.controller && r.controller.my);
-            if (!alreadyClaimed) { expansionTarget = name; break; }
+            if (!alreadyClaimed && !claimerTargets.includes(name)) { expansionTarget = name; break; }
           }
         }
-      }
-      // Fall back to eastNeighbor if no memory target found
-      if (!expansionTarget && eastRoom) {
-        const er = Game.rooms[eastRoom];
-        const alreadyClaimed = !!(er && er.controller && er.controller.my);
-        const inTransit = Object.values(Game.creeps)
-          .some(c => c.memory.role === 'claimer' && c.memory.targetRoom === eastRoom);
-        if (!alreadyClaimed && !inTransit) expansionTarget = eastRoom;
       }
     }
     targets.claimer = expansionTarget ? 1 : ((controller && !controller.my) ? 1 : 0);
     if (expansionTarget) targets.claimerTarget = expansionTarget;
+
+    // Remote harvesting: once the northern outpost is CLAIMED and visible, dispatch a
+    // remote crew (harvester + hauler + builder) to work its sources and feed home.
+    // Gated on confirmed ownership + visibility so the crews' cross-room moveTo works
+    // (both rooms visible -> the pather succeeds; the blind move() crossing is only
+    // needed by the claimer to enter an UNSEEN room).
+    if (northRoom) {
+      const nr = Game.rooms[northRoom];
+      const nMem = Memory.rooms && Memory.rooms[northRoom];
+      if (nr && nr.controller && nr.controller.my && nMem && nMem.claimedAt) {
+        const nSources = nr.find(FIND_SOURCES).length;
+        if (nSources > 0) {
+          targets.remoteTarget = northRoom;
+          targets.remoteharvester = nSources;   // one harvester per north source
+          targets.remotehauler = 1;             // carries north output back home
+          targets.remotebuilder = 1;            // builds roads / a source container
+        }
+      }
+    }
     // Reclaim dropped energy: only when there's a REAL pile (>=200, i.e. more than a
     // trivial blip). The old `filled > 0 ||` short-circuit made this fire on ANY drop
     // (containers are always filled here), so every creep-death drip spawned a big
@@ -570,12 +631,18 @@ function manageSpawns(room) {
   const counts = {};
   for (const name in Game.creeps) {
     const c = Game.creeps[name];
+    const r = c.memory.role;
+    // Remote crews are dispatched by THIS home spawn but work in the outpost room, so
+    // count them against the home room's remote targets regardless of where they stand.
+    if (r === 'remoteharvester' || r === 'remotehauler' || r === 'remotebuilder') {
+      if (c.memory.homeRoom === room.name) counts[r] = (counts[r] || 0) + 1;
+      continue;
+    }
     // Use pos.roomName — c.room is undefined for creeps in fog-of-war expansion rooms, which CRASHES manageSpawns
     if (c.pos.roomName !== room.name) continue;
     // §6 FOCUS 2: clear stale `replacing` linkage to a dead predecessor
     // (the successor outlived the dying creep it was replacing).
     if (c.memory.replacing && !Game.creeps[c.memory.replacing]) delete c.memory.replacing;
-    const r = c.memory.role;
     counts[r] = (counts[r] || 0) + 1;
   }
   // Built source containers (the income unlock). `filled` from getTargets is not in
@@ -899,7 +966,21 @@ function manageSpawns(room) {
     return;
   }
 
-    // Expansion: field ONE claimer for the east outpost once the home bank has
+    // Wake an idle claimer: a claimer left over with no targetRoom (e.g. spawned before
+    // the north expansion target existed) is pointed at the current expansion target so
+    // it stops idling and goes to claim. role.claimer returns early while targetRoom is
+    // unset, so without this the idle claimer never moves.
+    if (targets.claimerTarget) {
+      for (const name in Game.creeps) {
+        const c = Game.creeps[name];
+        if (c.memory.role === 'claimer' && !c.memory.targetRoom) {
+          c.memory.targetRoom = targets.claimerTarget;
+          console.log('[EXPANSION] assigned idle claimer ' + name + ' -> targetRoom=' + targets.claimerTarget);
+        }
+      }
+    }
+
+    // Expansion: field ONE claimer for the northern outpost once the home bank has
     // recovered to a FULL bank (energyCapacityAvailable) — this round's claimer is a
     // ~600 energy body, and a partial-bank spawn crashes a fragile RCL3 1-source
     // economy back into the weak-body death-spiral. Full-bank + the bodyCost guard
@@ -960,6 +1041,23 @@ function manageSpawns(room) {
     // Pick best source for harvesters
     const memory = { role };
     if (role === 'claimer' && targets.claimerTarget) memory.targetRoom = targets.claimerTarget;
+    if (role === 'remoteharvester' || role === 'remotehauler' || role === 'remotebuilder') {
+      memory.targetRoom = targets.remoteTarget;
+      memory.homeRoom = room.name;
+    }
+    if (role === 'remoteharvester' && targets.remoteTarget) {
+      // Assign the least-used north source to this remote harvester.
+      const nr = Game.rooms[targets.remoteTarget];
+      if (nr) {
+        const nsrcs = nr.find(FIND_SOURCES);
+        let best = null, min = Infinity;
+        for (const src of nsrcs) {
+          const n = Object.values(Game.creeps).filter(c => c.memory.role === 'remoteharvester' && c.memory.sourceId === src.id).length;
+          if (n < min) { min = n; best = src; }
+        }
+        if (best) memory.sourceId = best.id;
+      }
+    }
     if (role === 'harvester') {
       const sources = room.find(FIND_SOURCES);
       let bestSrc = null, min = Infinity;
@@ -996,4 +1094,4 @@ function manageSpawns(room) {
   console.log('[MANAGE] NO candidate spawned — all skipped or no candidates');
 }
 
-module.exports = { buildBody, getTargets, manageSpawns, computeLeadTime, estimateTravelTicks, allies, getOwnedRooms, getHomeRoom, getRoomStage, getRoomPriority };
+module.exports = { buildBody, getTargets, manageSpawns, computeLeadTime, estimateTravelTicks, northNeighbor, allies, getOwnedRooms, getHomeRoom, getRoomStage, getRoomPriority };

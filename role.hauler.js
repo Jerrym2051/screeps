@@ -35,7 +35,15 @@ module.exports = function (creep) {
       return;
     }
 
-    // Banks full: dump to storage, then move on.
+    // Banks full: top off towers next (they need energy to repair decaying structures).
+    const towers = creep.room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER && s.store.getFreeCapacity(RESOURCE_ENERGY) >= used })
+      .sort((a, b) => b.store.getFreeCapacity(RESOURCE_ENERGY) - a.store.getFreeCapacity(RESOURCE_ENERGY));
+    if (towers.length) {
+      if (creep.transfer(towers[0], RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(towers[0], { reusePath: 5 });
+      return;
+    }
+
+    // Banks and towers full: dump to storage, then move on.
     const storages = creep.room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_STORAGE && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
     if (storages.length) {
       if (creep.transfer(storages[0], RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(storages[0], { reusePath: 5 });

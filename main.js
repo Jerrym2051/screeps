@@ -13,6 +13,9 @@ const roles = {
   defender: require('role.defender'),
   attacker: require('role.attacker'),
   repairer: require('role.repairer'),
+  remoteharvester: require('role.remoteharvester'),
+  remotehauler: require('role.remotehauler'),
+  remotebuilder: require('role.remotebuilder'),
 };
 
 // Get all rooms we need to manage, sorted by priority
@@ -186,9 +189,11 @@ module.exports.loop = function () {
     if (m) {
       const [, wS, wN, nS, nN] = m;
       const w = parseInt(wN), n = parseInt(nN);
-      // Scan all 8 compass directions with unlimited range
+      // Scan all 8 compass directions with unlimited range. NORTH ([0,-1]) is scanned
+      // first: it is the home room's primary outpost direction, so the north neighbor is
+      // staged as 'expansion' before any other unseen room.
       const directions = [
-        [0, 1], [0, -1], [1, 0], [-1, 0],  // cardinal
+        [0, -1], [0, 1], [1, 0], [-1, 0],  // N first, then S/E/W
         [1, 1], [1, -1], [-1, 1], [-1, -1],  // diagonal
       ];
       for (const [dx, dy] of directions) {

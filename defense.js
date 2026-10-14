@@ -73,8 +73,10 @@ function manageTowers(room) {
     }
     const hurt = room.find(FIND_MY_CREEPS, { filter: c => c.hits < c.hitsMax });
     if (hurt.length) { t.heal(hurt[0]); continue; }
-    const dmg = room.find(FIND_MY_STRUCTURES, {
-      filter: s => s.hits < s.hitsMax
+    // NB: roads and containers are neutral structures, invisible to FIND_MY_STRUCTURES.
+    // Use FIND_STRUCTURES and include ours plus neutral roads/containers.
+    const dmg = room.find(FIND_STRUCTURES, {
+      filter: s => s.hits < s.hitsMax && (s.my || s.structureType === STRUCTURE_ROAD || s.structureType === STRUCTURE_CONTAINER)
     });
     if (dmg.length) { dmg.sort((a, b) => (a.hits / a.hitsMax) - (b.hits / b.hitsMax)); t.repair(dmg[0]); }
   }
