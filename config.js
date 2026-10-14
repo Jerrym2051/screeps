@@ -377,6 +377,9 @@ function _computeTargets(room) {
     // against only ~50/tick income, starving the builders mid-build and locking source1
     // dark forever. Once RCL3 is reached, drop to u1 — a single WORK keeps the controller
     targets.upgrader = haveContainer ? (srcContainersBuilt >= 2 ? (controller && controller.level < 3 ? 5 : 2) : 1) : 0;
+    // DEFICIT MODE (2026-10-14): energy deficit — cut upgraders to 1 until recovery.
+    // Remove this override to restore normal upgrader targets.
+    targets.upgrader = Math.min(targets.upgrader || 0, 1);
     targets.builder = 4; // ramp the far-container build: 2 builders crawl the 5000-site (2 build/tick =
                        // ~40 min); 4 builders (4 WORK = 8 build/tick, ~10 min) finish source1's container
                        // fast enough that RCL2 doesn't downgrade-risk while waiting. Funded
