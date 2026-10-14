@@ -32,7 +32,11 @@ module.exports = function (creep) {
   if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
     if (creep.harvest(source) === ERR_NOT_IN_RANGE) creep.moveTo(source, { reusePath: 5 });
   } else {
-    // Full — drop beside the source for the remote hauler to collect.
-    creep.drop(RESOURCE_ENERGY);
+    // Full — dump into the on-site container if one exists (laid by buildPlan), else
+    // drop on the ground beside the source for the remote hauler to collect.
+    const cont = creep.pos.findInRange(FIND_STRUCTURES, 2, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 })[0];
+    if (cont) { if (creep.transfer(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont, { reusePath: 3 }); }
+    else creep.drop(RESOURCE_ENERGY);
   }
 };

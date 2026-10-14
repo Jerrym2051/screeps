@@ -130,25 +130,25 @@ function getRoomPriority(roomName) {
   return 999;
 }
 
-// Compass-east neighbor of a room name, zero-padded to the 2-digit screeps format.
-// E-axis rooms step +1 to the east (E46 -> E47); W-axis rooms step -1 (W05 -> W04).
-// Returns null if the result would wrap past the E/W axis (no expansion that way).
+// Compass-east neighbor of a room name. Screeps room names are NOT zero-padded
+// (main.js's own expansion scanner builds neighbor names as `wS+(w+dx)+nS+(n+dy)`,
+// e.g. W9S58 -> W8S58), so emit the integer as-is. E-axis steps +1 (E46 -> E47);
+// W-axis steps -1 (W9 -> W8). Returns null past the axis edge (no W1 -> E wrap).
 function eastNeighbor(roomName) {
   const m = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
   if (!m) return null;
-  let axis = m[1], num = parseInt(m[2]);
-  if (axis === 'W') { num -= 1; if (num < 1) return null; }
-  else { num += 1; }
-  if (num > 125) return null;
-  const p = n => (n < 10 ? '0' + n : '' + n);
-  return axis + p(num) + m[3] + p(parseInt(m[4]));
+  const axis = m[1], num = parseInt(m[2]);
+  let n;
+  if (axis === 'W') { n = num - 1; if (n < 1) return null; }
+  else { n = num + 1; }
+  if (n > 125) return null;
+  return axis + n + m[3] + m[4];
 }
 
-// Compass-north neighbor of a room name, zero-padded to the 2-digit screeps format.
-// N-axis rooms step +1 further north (N04 -> N05); S-axis rooms step -1 (S58 -> S57,
-// toward the north). Returns null if the result would wrap past the N/S axis (S01 ->
-// the equator), matching eastNeighbor's convention of not crossing the world axis.
-// The home room (W9S58)'s north neighbor is W9S57.
+// Compass-north neighbor of a room name. Unpadded, matching Screeps' room-name format
+// (see eastNeighbor). N-axis steps +1 further north (N04 -> N05); S-axis steps -1
+// (S58 -> S57, toward the north). Returns null past the axis edge (S1 wraps to the
+// equator). The home room (W9S58)'s north neighbor is W9S57.
 function northNeighbor(roomName) {
   const m = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
   if (!m) return null;
@@ -157,8 +157,7 @@ function northNeighbor(roomName) {
   if (axis === 'S') { n = num - 1; if (n < 1) return null; }   // S58 -> S57 (north); S1 wraps
   else { n = num + 1; }                                          // N5 -> N6 (further north)
   if (n > 125) return null;
-  const p = x => (x < 10 ? '0' + x : '' + x);
-  return m[1] + p(parseInt(m[2])) + axis + p(n);
+  return m[1] + m[2] + axis + n;
 }
 
 function buildBody(role, budget) {
@@ -443,7 +442,10 @@ function _computeTargets(room) {
     if (northRoom) {
       const nr = Game.rooms[northRoom];
       const nMem = Memory.rooms && Memory.rooms[northRoom];
-      if (nr && nr.controller && nr.controller.my && nMem && nMem.claimedAt) {
+      // Only staff the outpost once it is owned, visible, and currently hostile-free —
+      // unarmed harvesters/haulers would otherwise be fed to an invader while it camps.
+      if (nr && nr.controller && nr.controller.my && nMem && nMem.claimedAt &&
+          nr.find(FIND_HOSTILE_CREEPS).length === 0) {
         const nSources = nr.find(FIND_SOURCES).length;
         if (nSources > 0) {
           targets.remoteTarget = northRoom;
@@ -575,7 +577,7 @@ function reportStatus(room) {
     const srcs = room.find(FIND_SOURCES).map(s => s.pos.x + ',' + s.pos.y + ':' + room.name);
     const conts = room.find(FIND_STRUCTURES, { filter: s => s.structureType === STRUCTURE_CONTAINER }).map(c => c.pos.x + ',' + c.pos.y + ':' + c.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + c.store.getCapacity(RESOURCE_ENERGY));
     console.log('[DIAG] H=' + w('harvester') + ' W  U(W=' + w('upgrader') + ',C=' + c('upgrader') + ') hlr=[' + hp.join(',') + '] bank=' + bank + ' src=' + srcs.join('|') + ' cont=' + conts.join('|') + ' TW=' + room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_TOWER }).map(t => t.store.getUsedCapacity(RESOURCE_ENERGY) + '/' + t.store.getCapacity(RESOURCE_ENERGY)).join(',') + ' TS=' + room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_TOWER }).length);
-    const expTarget = targets.claimerTarget || eastNeighbor(room.name);
+    const expTarget = targets.claimerTarget || northNeighbor(room.name);
     const fexit = expTarget ? room.findExitTo(expTarget) : 'no-expansion-target';
     const cl = Object.values(Game.creeps).filter(x => x.memory.role === 'claimer').map(x => x.name + '@' + x.pos + '/ttl=' + x.ticksToLive + '/tgt=' + (x.memory.targetRoom||'-') + '/body=' + x.body.map(p => p.type).join(''));
     const exp = expTarget ? Game.rooms[expTarget] : null;
