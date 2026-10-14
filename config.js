@@ -385,6 +385,9 @@ function _computeTargets(room) {
                        // fast enough that RCL2 doesn't downgrade-risk while waiting. Funded
                        // by the near-container pool (builders withdraw from containers, not
                        // only the spawn), so it doesn't starve the upgrader.
+    // DEFICIT MODE (2026-10-14): energy deficit - cut builders to 1 until recovery.
+    // Remove this override to restore normal builder targets.
+    targets.builder = Math.min(targets.builder || 0, 1);
     // Haulers are sized to the energy flowing INTO the containers (the harvest rate),
     // not to the energy flowing OUT (consumer drain) — otherwise a momentarily-full
     // source container spawns a stack of haulers that idle once it drains, OR too few
