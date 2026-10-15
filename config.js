@@ -414,14 +414,18 @@ function _computeTargets(room) {
         .reduce((n, c) => n + c.body.filter(p => p.type === WORK).length, 0);
     targets.hauler = filled > 0 ? Math.min(8, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
     // Expansion: the home room's primary outpost is the NORTHERN neighbor (was east).
-    // Gate to RCL>=4 + a healthy bank so a ~810 claim body can't crash a recovering
-    // home. Field ONE claimer at a time: the spawn block below checks counts.claimer===0,
-    // and an idle claimer is re-targeted by manageSpawns. Once the north room is owned,
-    // the remote-crew dispatch takes over. (The claimer's exitDirTo already handles the
+    // The expansion TARGET is set whenever the home is RCL>=4. Pointing an already-spawned
+    // idle claimer at the room is cheap and must happen REGARDLESS of the bank — otherwise
+    // a claimer left in spawn with no targetRoom never moves (role.claimer returns early).
+    // Spawning a NEW claimer stays gated to a full bank (energyAvailable >= 700, the
+    // manageSpawns spawn block below), so a partial-bank spawn can't crash a recovering
+    // home. Field ONE claimer at a time: counts.claimer===0 blocks a second spawn, and an
+    // idle claimer is re-targeted by manageSpawns. Once the north room is owned, the
+    // remote-crew dispatch takes over. (The claimer's exitDirTo already handles the
     // TOP/north border; north is the home room's W9S58 -> W9S57 neighbor.)
     const northRoom = northNeighbor(room.name);
     let expansionTarget = null;
-    if (controller && controller.level >= 4 && room.energyAvailable >= 500) {
+    if (controller && controller.level >= 4) {
       // Primary: the directly-northern neighbor, if it is not already ours and no
       // claimer is already en route to it (prevents a second claimer for the same room).
       if (northRoom) {
