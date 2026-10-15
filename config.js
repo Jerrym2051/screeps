@@ -20,6 +20,10 @@ const ROLE_PRIORITY = {
 };
 const allies = [];
 
+// TEMP-ECONOMY CAP (Jerry 2026-10-15): no creep spawns with more than 18 body parts.
+// Lift by deleting this constant and removing the b.length guards in buildBody.
+const MAX_BODY_PARTS = 18;
+
 let _tgtTick = -1;
 const _tgtCache = {};
 
@@ -172,21 +176,21 @@ function buildBody(role, budget) {
     if (budget < 200) return [];
     if (budget >= 250) { b.push(TOUGH, MOVE, RANGED_ATTACK, HEAL); budget -= 250; }
     else if (budget >= 200) { b.push(TOUGH, MOVE, ATTACK); budget -= 200; }
-    while (budget >= 50) { b.push(MOVE); budget -= 50; }
+    while (budget >= 50 && b.length + 1 <= MAX_BODY_PARTS) { b.push(MOVE); budget -= 50; }
     return b;
   }
   if (role === 'repairer') {
     if (budget < 200) return [];
-    while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
-    if (budget >= 100) { b.push(CARRY, MOVE); }
+    while (budget >= 200 && b.length + 3 <= MAX_BODY_PARTS) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget >= 100 && b.length + 2 <= MAX_BODY_PARTS) { b.push(CARRY, MOVE); }
     return b;
   }
   // attacker: ranged combat body - tough for survivability, ranged attack + heal
   if (role === 'attacker') {
     if (budget < 300) return [];
-    while (budget >= 300) { b.push(TOUGH, RANGED_ATTACK, MOVE, HEAL); budget -= 300; }
-    if (budget >= 150) { b.push(TOUGH, RANGED_ATTACK, MOVE); budget -= 150; }
-    if (budget >= 100) { b.push(TOUGH, MOVE); budget -= 100; }
+    while (budget >= 300 && b.length + 4 <= MAX_BODY_PARTS) { b.push(TOUGH, RANGED_ATTACK, MOVE, HEAL); budget -= 300; }
+    if (budget >= 150 && b.length + 3 <= MAX_BODY_PARTS) { b.push(TOUGH, RANGED_ATTACK, MOVE); budget -= 150; }
+    if (budget >= 100 && b.length + 2 <= MAX_BODY_PARTS) { b.push(TOUGH, MOVE); budget -= 100; }
     return b;
   }
   // looter: a burst collector for dropped energy. Keep it CHEAP + small so it spawns
@@ -203,9 +207,9 @@ function buildBody(role, budget) {
   // upgrader: big CARRY to maximize energy per trip, fewer trips back to spawn
   if (role === 'upgrader') {
     if (budget < 250) return [];
-    while (budget >= 250) { b.push(WORK, CARRY, CARRY, MOVE); budget -= 250; }
-    if (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
-    if (budget >= 100) { b.push(CARRY, MOVE); }
+    while (budget >= 250 && b.length + 4 <= MAX_BODY_PARTS) { b.push(WORK, CARRY, CARRY, MOVE); budget -= 250; }
+    if (budget >= 200 && b.length + 3 <= MAX_BODY_PARTS) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget >= 100 && b.length + 2 <= MAX_BODY_PARTS) { b.push(CARRY, MOVE); }
     return b;
   }
   // harvester: WORK-priority. A single 1-WORK/1-CARRY body only nets ~1.25/tick
@@ -225,7 +229,7 @@ function buildBody(role, budget) {
     if (budget >= 600) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C (energy 350)
     else if (budget >= 550) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C (energy 300)
     else { b.push(WORK, CARRY, MOVE); budget -= 200; }                            // 1W1C emergency floor
-    while (budget >= 150) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
+    while (budget >= 150 && b.length + 2 <= MAX_BODY_PARTS) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
     return b;
   }
   // Haulers are pure logistics (carry+move, no WORK) — using the generic isWork path
@@ -253,16 +257,16 @@ function buildBody(role, budget) {
    const isWork = ['builder','miner'].includes(role);
   if (isWork) {
     if (budget < 200) return [];
-    while (budget >= 200) { b.push(WORK, CARRY, MOVE); budget -= 200; }
-    if (budget >= 100) { b.push(CARRY, MOVE); }
+    while (budget >= 200 && b.length + 3 <= MAX_BODY_PARTS) { b.push(WORK, CARRY, MOVE); budget -= 200; }
+    if (budget >= 100 && b.length + 2 <= MAX_BODY_PARTS) { b.push(CARRY, MOVE); }
   } else {
     // Hauler: 2 MOVE per CARRY so it still moves 2 tiles/tick when fully loaded.
     // A 1:1 body is 1/tick under load — too slow to drain a saturated 2-source
     // economy, which is exactly why the source containers sat at cE~2000 and the
     // bank stayed starved. Floor of a single [C,M] pair at low bank so logistics
     // never stall during cold-start.
-    while (budget >= 150) { b.push(CARRY, MOVE, MOVE); budget -= 150; }
-    if (budget >= 100) { b.push(CARRY, MOVE); budget -= 100; }
+    while (budget >= 150 && b.length + 3 <= MAX_BODY_PARTS) { b.push(CARRY, MOVE, MOVE); budget -= 150; }
+    if (budget >= 100 && b.length + 2 <= MAX_BODY_PARTS) { b.push(CARRY, MOVE); budget -= 100; }
   }
   return b;
 }
