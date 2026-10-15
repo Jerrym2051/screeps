@@ -371,7 +371,13 @@ function _computeTargets(room) {
     // ~1.6/tick carry-trip income, which collapses the pre-container bank and
     // starves the builder mid-build. Once the container exists the harvesters
     // dump at the source and income jumps, so the upgrader is affordable again.
-    const haveContainer = filled > 0;
+    // Container EXISTS (even if temporarily empty). Using `filled > 0` made
+    // targets.upgrader collapse to 0 whenever the container was drained during the
+    // deficit, recycling the lone anti-downgrade upgrader as "surplus" (1 > 0) every
+    // deficit tick — a spawn->idle->recycle->respawn loop. Match the documented intent
+    // (comment above: "1 always once the near container exists"). Condition fix only;
+    // upgrader target is still 1 once a container exists.
+    const haveContainer = containers.length > 0;
     // Updaters: 1 always (anti-downgrade) once the near container exists. Rush to 3 only
     // once BOTH source containers are filled (filled >= 2) — i.e. source1 is online and
     // income has jumped to ~100/tick, so the bank (300 at RCL1 -> 550+ at RCL2) can fund
@@ -771,7 +777,7 @@ function manageSpawns(room) {
   if (!needRescue && (counts.upgrader || 0) > (targets.upgrader || 0)) {
     const upgs = Object.values(Game.creeps)
       .filter(c => c.memory.role === 'upgrader' && c.room.name === room.name && c.body.length >= 2)
-      .sort((a, b) => (b.ticksToLive || 0) - (a.ticksToLive || 0)); // highest TTL first (max refund)
+      .sort((a, b) => (a.ticksToLive || 0) - (b.ticksToLive || 0)); // lowest TTL first: cull the dyingest, keep fresh replacements (recycleCreep refund is TTL-independent, so highest-TTL "max refund" was wrong and culled the fresh replacement)
     const victim = upgs[0];
     if (victim) {
       const r = typeof s.recycleCreep === 'function' ? s.recycleCreep(victim) : -10;
