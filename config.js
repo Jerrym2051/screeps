@@ -212,24 +212,19 @@ function buildBody(role, budget) {
     if (budget >= 100 && b.length + 2 <= MAX_BODY_PARTS) { b.push(CARRY, MOVE); }
     return b;
   }
-  // harvester: WORK-priority. A single 1-WORK/1-CARRY body only nets ~1.25/tick
-  // after travel — barely enough for one upgrader, so a builder (or any creep
-  // death) tips the room into an energy crash + slim-down thrash. 2 WORK harvests
-  // ~4/tick; with CARRY for a delivery buffer ONE harvester sustains upgrader +
-  // builder. Keep the 1-WORK/1-CARRY body only as the low-energy emergency floor.
+  // harvester: link-fed WORK-priority. Jerry's spec (2026-10-15): "Larger ones should
+  // not need more carry, but more work and move." The link takes the harvested energy,
+  // so CARRY stays minimal (cap 2 — a small buffer only for the pre-link cold start).
+  // Everything above the floor scales WORK (harvest power) + MOVE (getting into
+  // position), never CARRY. Hard stops: MAX_BODY_PARTS = 18 and the 10-energy
+  // reserve (budget already reduced by 10 at the top of buildBody).
   if (role === 'harvester') {
     if (budget < 200) return [];
-    // On this server WORK=100, so a 2-WORK harvester body costs 300. At RCL1 the bank
-    // hard-caps at 300 (no extensions until RCL2), so spawning a 300-cost body drains the
-    // bank to 0 — the cold-start crash (300->0) seen right after the container built.
-    // Keep 2-WORK bodies gated to RCL2+ (bank >= 550 => a 300 body leaves a >=250 buffer);
-    // below that, the 1-WORK floor drains 300->100 (recoverable) and still saturates a
-    // 10/tick source once the on-site container exists. Existing 2-WORK harvests live
-    // out their TTL for the income they're carrying; only new spawns are capped here.
-    if (budget >= 600) { b.push(WORK, WORK, CARRY, CARRY, MOVE); budget -= 350; } // 2W2C (energy 350)
-    else if (budget >= 550) { b.push(WORK, WORK, CARRY, MOVE); budget -= 300; }   // 2W1C (energy 300)
-    else { b.push(WORK, CARRY, MOVE); budget -= 200; }                            // 1W1C emergency floor
-    while (budget >= 150 && b.length + 2 <= MAX_BODY_PARTS) { b.push(WORK, CARRY); budget -= 150; }                 // scale up with room
+    b.push(WORK, CARRY, MOVE); budget -= 200;                    // 1W1C1M emergency floor
+    // A 2nd carry is cheap insurance before the link exists; never exceed 2 total.
+    if (budget >= 50 && b.filter(p => p === CARRY).length < 2) { b.push(CARRY); budget -= 50; }
+    // Scale WORK and MOVE together: harvest power plus enough move to reach position.
+    while (budget >= 150 && b.length + 2 <= MAX_BODY_PARTS) { b.push(WORK, MOVE); budget -= 150; }
     return b;
   }
   // Haulers are pure logistics (carry+move, no WORK) — using the generic isWork path
