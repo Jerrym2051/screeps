@@ -453,21 +453,117 @@ function placeObserver(room) {
   }
 }
 
-// Links at RCL 5+ for energy logistics
+// Links at RCL 5+ for energy logistics:
+//   - SOURCE link: adjacent to one energy source, on a walkable tile a harvester
+//     can stand next to (transfer range 1). Picks the source that already has
+//     container/harvester infrastructure if one does; otherwise the first source.
+//   - BASE link: near storage (RCL 4+, e.g. (15,16)) or the spawn (18,17) —
+//     storage-adjacent tile first, then a radius-2 tile by the spawn.
+// RCL 5 caps links at 2: existing structures + construction sites both count, and
+// placement is idempotent (makeSite skips occupied tiles), so this never spawns
+// duplicate sites and never exceeds the cap. Links still under construction are
+// simply not in FIND_MY_STRUCTURES yet, so nothing is placed twice or transferred
+// from an unfinished link.
+const LINK_MAX_RCL5 = 2;
+const LINK_DRAIN_FRACTION = 0.75;   // drain the source link only when ~75%+ full,
+                                    // so the 3% transfer loss isn't paid on dribs
+
 function placeLinks(room) {
   const c = room.controller;
   if (!c || c.level < 5) return;
-  if (cache.structures(room, STRUCTURE_LINK).length) return;
   const spawn = cache.spawn(room);
   if (!spawn) return;
-  // Link near spawn for energy input
-  let built = 0;
-  for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0]]) {
-    const pos = new RoomPosition(spawn.pos.x + dx, spawn.pos.y + dy, room.name);
-    if (makeSite(pos, STRUCTURE_LINK, room) === OK) {
-      built++;
-      if (built >= 1) break;
+  const linkStructs = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LINK });
+  const linkSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_LINK });
+  if (linkStructs.length + linkSites.length >= LINK_MAX_RCL5) return; // RCL 5 cap reached
+  const sources = room.find(FIND_SOURCES);
+  if (!sources.length) return;
+  // Classify: a link within range 1 of a source is the source link.
+  const hasSourceLink = linkStructs.concat(linkSites).some(l => sources.some(s => s.pos.getRangeTo(l) <= 1));
+  if (!hasSourceLink) placeSourceLink(room, sources);
+  const stillStructs = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LINK });
+  const stillSites = room.find(FIND_CONSTRUCTION_SITES, { filter: s => s.structureType === STRUCTURE_LINK });
+  if (stillStructs.length + stillSites.length < LINK_MAX_RCL5) placeBaseLink(room, spawn);
+}
+
+// Source link: adjacent to a source, preferring the source that already has
+// container/harvester infrastructure (its drops have somewhere to go while the
+// link finishes; tie -> first source in the room's source list).
+function placeSourceLink(room, sources) {
+  let best = null, bestNear = -1;
+  for (const src of sources) {
+    const near = room.find(FIND_STRUCTURES, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER && (s.my || !s.owner) && s.pos.getRangeTo(src) <= 1 }).length;
+    if (near > bestNear) { bestNear = near; best = src; }
+  }
+  const src = best || sources[0];
+  const DIRS = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+  for (const [dx, dy] of DIRS) {
+    const pos = new RoomPosition(src.pos.x + dx, src.pos.y + dy, room.name);
+    if (linkSiteOk(room, pos) && makeSite(pos, STRUCTURE_LINK, room) === OK) {
+      console.log('source link placed for source', src.id, 'at', pos.x, pos.y, '(containers within 1:', bestNear + ')');
+      return;
     }
+  }
+  console.log('source link: no valid walkable tile adjacent to source', src.id);
+}
+
+// Base link: storage-adjacent tile first (storage is the natural energy sink),
+// else a radius-2 tile by the spawn (keeps the spawn's 3x3 ring clear).
+function placeBaseLink(room, spawn) {
+  const candidates = [];
+  const storage = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_STORAGE })[0];
+  if (storage) {
+    for (const [dx, dy] of [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]]) {
+      candidates.push({ pos: new RoomPosition(storage.pos.x + dx, storage.pos.y + dy, room.name), by: 'storage' });
+    }
+  }
+  for (const pos of ring(spawn.pos, 2)) candidates.push({ pos, by: 'spawn' });
+  const seen = new Set();
+  for (const { pos, by } of candidates) {
+    if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) continue;
+    const key = pos.x + ',' + pos.y;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (room.getTerrain().get(pos.x, pos.y) === TERRAIN_MASK_WALL) continue;
+    if (!isSpawnClear(pos, room)) continue;
+    if (pos.lookFor(LOOK_STRUCTURES).length || pos.lookFor(LOOK_CONSTRUCTION_SITES).length) continue;
+    if (makeSite(pos, STRUCTURE_LINK, room) === OK) {
+      console.log('base link placed', by, 'at', pos.x, pos.y);
+      return;
+    }
+  }
+  console.log('base link: no valid tile near storage or spawn');
+}
+
+function linkSiteOk(room, pos) {
+  if (pos.x < 1 || pos.x > 48 || pos.y < 1 || pos.y > 48) return false;
+  if (room.getTerrain().get(pos.x, pos.y) === TERRAIN_MASK_WALL) return false;
+  if (pos.lookFor(LOOK_STRUCTURES).length || pos.lookFor(LOOK_CONSTRUCTION_SITES).length) return false;
+  return true;
+}
+
+// Each-tick link pipeline: if the source link is fairly full and off cooldown,
+// push its energy to the base link. Under-construction links (sites only) are
+// skipped — they're not in FIND_MY_STRUCTURES until built, so nothing transfers
+// before a link is finished. No-op below RCL 5 or without a complete pair.
+function tickLinks(room) {
+  const c = room.controller;
+  if (!c || c.level < 5) return;
+  const links = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LINK });
+  if (links.length !== LINK_MAX_RCL5) return; // wait for both links to finish building
+  const sources = room.find(FIND_SOURCES);
+  const sourceLink = links.find(l => sources.some(s => s.pos.getRangeTo(l) <= 1));
+  const baseLink = sourceLink ? links.find(l => l.id !== sourceLink.id) : null;
+  if (!sourceLink || !baseLink) return;
+  const threshold = Math.floor(sourceLink.energyCapacity * LINK_DRAIN_FRACTION);
+  if (sourceLink.energy < threshold || sourceLink.cooldown !== 0) return;
+  const r = sourceLink.transferEnergy(baseLink);
+  if (r === OK) {
+    console.log('[LINK] source(' + sourceLink.pos.x + ',' + sourceLink.pos.y + ') -> base(' +
+      baseLink.pos.x + ',' + baseLink.pos.y + ') transferred, source energy was ' + sourceLink.energy);
+  } else if (Game.time % 50 === 0) {
+    console.log('[LINK] transferEnergy source->base failed:', r);
   }
 }
 
@@ -505,4 +601,4 @@ function buildPlan(room) {
   }
 }
 
-module.exports = { buildPlan };
+module.exports = { buildPlan, tickLinks };

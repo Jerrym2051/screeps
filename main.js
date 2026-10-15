@@ -170,6 +170,14 @@ module.exports.loop = function () {
       if (_prof) _prof.marks.push('buildEnd:' + Game.cpu.getUsed());
     }
 
+    // 4b. link pipeline: source link -> base link, every tick once both are built.
+    // Under-construction links are skipped naturally (not structures yet).
+    if (build && build.tickLinks) {
+      if (_prof) _prof.marks.push('linksStart:' + Game.cpu.getUsed());
+      try { build.tickLinks(room); } catch (e) { console.log('[MAIN] tickLinks threw:', e.message); }
+      if (_prof) _prof.marks.push('linksEnd:' + Game.cpu.getUsed());
+    }
+
     // 5. tower active defense + safe mode
     if (_prof) _prof.marks.push('defStart:' + Game.cpu.getUsed());
     defense.manageTowers(room);

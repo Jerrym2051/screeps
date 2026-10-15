@@ -42,6 +42,16 @@ function findRemoteSource(creep) {
 function findDumpTarget(creep, source) {
   const spawn = creep.room.find(FIND_MY_SPAWNS)[0];
   const c = creep.room.controller;
+  // 0) Source link (RCL 5+): a built link adjacent to this source takes the
+  //    harvester's drop at transfer range 1; the link pipeline then hauls it to
+  //    the base link, bypassing containers. No link / full link / link still under
+  //    construction -> fall through to containers (and the rest) below.
+  if (source) {
+    const link = source.pos.findInRange(FIND_MY_STRUCTURES, 1, {
+      filter: s => s.structureType === STRUCTURE_LINK && (s.my || !s.owner) &&
+        s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 });
+    if (link.length) return link[0];
+  }
   // 1) source's own container (by memory), verified to actually exist + have space
   const mem = Memory.rooms?.[creep.room.name]?.sources?.[source?.id]?.containerPos;
   if (mem && mem.x != null && mem.y != null && mem.roomName) {
