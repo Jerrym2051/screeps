@@ -1,8 +1,8 @@
 // role.claimer.js - travel to memory.targetRoom and claim/reserve its controller.
 // On this server: moveTo(unseen target) returns -2 (no path), so crossing is
-// done with move(dir) at the EXIT. Inside the target room, the cross-room
-// pather is intermittent, so interior approach uses getDirectionTo(c)+move
-// (deterministic, always stays in-room). The memory.arrived flag prevents
+// done with move(dir) at the EXIT. Inside the target room the controller is
+// in the same visible room, so interior approach uses moveTo(c), which paths
+// around walls. The memory.arrived flag prevents
 // re-entering the travel section after crossing.
 function exitDirTo(fromName, toName) {
   const p = n => { const m = n.match(/^([WE])(\d+)([NS])(\d+)$/); return m ? { ew: m[1], ex: +m[2], ns: m[3], ny: +m[4] } : null; };
@@ -127,20 +127,16 @@ module.exports = function (creep) {
       console.log('[CLAIM3] claim=' + r + ' range=' + c.pos.getRangeTo(creep) + ' hasC=' + hasC + ' rsv=' + JSON.stringify(rsv) + ' pos=' + creep.pos);
       creep.memory.claimPhase = 'reserve';
     }
-    // Interior approach: walk directly toward the controller using move() — the
-    // cross-room pather is broken on this server, so moveTo(c) can return a path
-    // that bounces the claimer back across the border. getDirectionTo + move is
-    // deterministic and always stays in-room once we've arrived.
+    // Interior approach: walk directly toward the controller with moveTo(),
+    // which paths around walls inside the visible room.
     if (creep.pos.getRangeTo(c) > 1) {
-      const d = creep.pos.getDirectionTo(c);
-      const r = creep.move(d);
-      if (Game.time % 25 === 0) console.log('[CLAIM3] interior move d=' + d + ' r=' + r + ' pos=' + creep.pos);
+      const r = creep.moveTo(c);
+      if (Game.time % 25 === 0) console.log('[CLAIM3] interior moveTo r=' + r + ' pos=' + creep.pos);
     }
   } else {
     const r = creep.reserveController(c);
     if (r === ERR_NOT_IN_RANGE) {
-      const d = creep.pos.getDirectionTo(c);
-      creep.move(d);
+      creep.moveTo(c);
     }
   }
 };
