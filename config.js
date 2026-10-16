@@ -449,17 +449,32 @@ function _computeTargets(room) {
     targets.claimer = expansionTarget ? 1 : ((controller && !controller.my) ? 1 : 0);
     if (expansionTarget) targets.claimerTarget = expansionTarget;
 
-    // Remote harvesting: once the northern outpost is CLAIMED and visible, dispatch a
-    // remote crew (harvester + hauler + builder) to work its sources and feed home.
-    // Gated on confirmed ownership + visibility so the crews' cross-room moveTo works
-    // (both rooms visible -> the pather succeeds; the blind move() crossing is only
-    // needed by the claimer to enter an UNSEEN room).
+    // Remote harvesting: once the northern outpost is OURS (claimed or reserved by
+    // us) and visible, dispatch a remote crew (harvester + hauler + builder) to
+    // work its sources and feed home.
+    // Gated on confirmed ownership/reservation + visibility so the crews' cross-room
+    // moveTo works (both rooms visible -> the pather succeeds; the blind move()
+    // crossing is only needed by the claimer to enter an UNSEEN room).
     if (northRoom) {
       const nr = Game.rooms[northRoom];
       const nMem = Memory.rooms && Memory.rooms[northRoom];
-      // Only staff the outpost once it is owned, visible, and currently hostile-free —
-      // unarmed harvesters/haulers would otherwise be fed to an invader while it camps.
-      if (nr && nr.controller && nr.controller.my && nMem && nMem.claimedAt &&
+      // Ours means either we own the controller, or our own claimer has RESERVED
+      // it — a reserved-but-never-owned room still earns the remote crew (e.g.
+      // while we are still on GCL 1). claimedAt is only stamped when a controller
+      // is CLAIMED, so it gates the owned path alone; the reserved path instead
+      // relies on the reservation's remaining ticks (reservedByMe, below).
+      const owned = !!(nr && nr.controller && nr.controller.my);
+      const reservedByMe = !!(
+        nr && nr.controller &&
+        nr.controller.reservation &&
+        nr.controller.reservation.username === 'zma' &&
+        (nr.controller.reservation.ticksToEnd || 0) > 0
+      );
+      // Only staff the outpost once it is ours, visible, and currently
+      // hostile-free — unarmed harvesters/haulers would otherwise be fed
+      // to an invader while it camps.
+      if ((owned || reservedByMe) && nMem &&
+          (owned ? !!nMem.claimedAt : true) &&
           nr.find(FIND_HOSTILE_CREEPS).length === 0) {
         const nSources = nr.find(FIND_SOURCES).length;
         if (nSources > 0) {
