@@ -1,9 +1,12 @@
 // role.remoteharvester.js - harvest a source in memory.targetRoom (the north outpost)
-// and drop the energy on the ground beside it. The outpost has no spawn (and no source
-// container yet), so a full harvester DROPS its carry and a remote hauler carries it home.
-// Dispatched from the HOME spawn only AFTER the target room is claimed + visible, so
-// cross-room moveTo pathing succeeds — the blind move() border-crossing is only needed
-// by the claimer entering an UNSEEN room (see role.claimer.js).
+// and deposit energy: into the source container once it exists (laid by buildPlan), else
+// drop on the ground beside it for the remote hauler to carry home. While the source
+// container is still under construction, a full harvester builds the container site near
+// its assigned source itself (within range 3) instead of dropping energy that would decay
+// on the ground — the remote builder stays on roads/general sites, the harvester finishes
+// the container. Dispatched from the HOME spawn only AFTER the target room is claimed +
+// visible, so cross-room moveTo pathing succeeds — the blind move() border-crossing is only
+// needed by the claimer entering an UNSEEN room (see role.claimer.js).
 module.exports = function (creep) {
   const targetRoom = creep.memory.targetRoom;
   if (!targetRoom) return;
@@ -32,8 +35,16 @@ module.exports = function (creep) {
   if (creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
     if (creep.harvest(source) === ERR_NOT_IN_RANGE) creep.moveTo(source, { reusePath: 5 });
   } else {
-    // Full — dump into the on-site container if one exists (laid by buildPlan), else
-    // drop on the ground beside the source for the remote hauler to collect.
+    // Full — still no container? Then HELP THE REMOTE BUILDER: build the source container
+    // site near this source instead of dropping energy on the ground (which decays). Only
+    // container sites count (no roads/general sites) and only within range 3 of THIS source,
+    // so the builder keeps owning roads + general construction.
+    const site = source.pos.findInRange(FIND_CONSTRUCTION_SITES, 3, {
+      filter: s => s.structureType === STRUCTURE_CONTAINER })[0];
+    if (site) { if (creep.build(site) === ERR_NOT_IN_RANGE) creep.moveTo(site, { reusePath: 3 }); return; }
+
+    // Container (or site) not ready yet — dump into the on-site container if one exists (laid
+    // by buildPlan), else drop on the ground beside the source for the remote hauler to collect.
     const cont = creep.pos.findInRange(FIND_STRUCTURES, 2, {
       filter: s => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 })[0];
     if (cont) { if (creep.transfer(cont, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(cont, { reusePath: 3 }); }
