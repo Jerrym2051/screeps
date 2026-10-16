@@ -47,11 +47,10 @@ module.exports = function (creep) {
       if (atBorder && dir > 0) {
         creep.move(dir);
       } else {
-        // Walk toward border one tile at a time using move(), never moveTo
-        if (dir === RIGHT) creep.move(RIGHT);
-        else if (dir === LEFT) creep.move(LEFT);
-        else if (dir === TOP) creep.move(TOP);
-        else if (dir === BOTTOM) creep.move(BOTTOM);
+        // moveTo is safe: target is in the current visible room (only cross-room moveTo is broken on this server).
+        const tx = dir === LEFT ? 0 : dir === RIGHT ? 49 : creep.pos.x;
+        const ty = dir === TOP ? 0 : dir === BOTTOM ? 49 : creep.pos.y;
+        creep.moveTo(new RoomPosition(tx, ty, creep.pos.roomName));
       }
       return;
     }
@@ -78,12 +77,10 @@ module.exports = function (creep) {
         return;
       }
 
-      // NOT at border: walk toward the border one tile at a time using move(),
-      // never moveTo (which bounces on cross-room targets on this server).
-      if (dir === RIGHT) creep.move(RIGHT);
-      else if (dir === LEFT) creep.move(LEFT);
-      else if (dir === TOP) creep.move(TOP);
-      else if (dir === BOTTOM) creep.move(BOTTOM);
+      // moveTo is safe: target is in the current visible room (only cross-room moveTo is broken on this server).
+      const tx = dir === LEFT ? 0 : dir === RIGHT ? 49 : creep.pos.x;
+      const ty = dir === TOP ? 0 : dir === BOTTOM ? 49 : creep.pos.y;
+      creep.moveTo(new RoomPosition(tx, ty, creep.pos.roomName));
       if (Game.time % 25 === 0) console.log('[CLM2] travel ' + creep.pos + ' dir=' + dir + ' ttl=' + creep.ticksToLive);
       return;
     }
