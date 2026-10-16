@@ -5,6 +5,31 @@
 //    only, skipping containers. Keeps the starved spawn banked so it can build bigger creeps.
 // Sticks with a chosen container until it can no longer fill the hauler's free
 // capacity, avoiding thrash between targets picked by other haulers.
+
+// Link pipeline (see build.js placeLinks / tickLinks): a source link sits within
+// range 1 of a source; the base link is the other link of the pair, near
+// storage/spawn. The base link caps at 800 energy — once full, the source link
+// can't push more energy to it and the source -> base pipeline stalls.
+//
+// LINK_WITHDRAW_MIN: drain the base link once it holds a meaningful amount.
+// 100 is worth a hauler trip (large free capacity; avoids trips for trivial
+// dribs that barely move the pipeline) but small enough that energy never sits
+// stranded in the link long enough to reach the 800 cap and stall it. The
+// source -> base transfer itself only drains at ~75% full
+// (LINK_DRAIN_FRACTION in build.js), so this hauler-side threshold keeps the
+// link low between transfers. Never withdraw from the source link — within
+// range 1 of a source — that's the harvester's side of the pipeline.
+const LINK_WITHDRAW_MIN = 100;
+
+// The base link: the room link NOT within range 1 of any source (the source
+// link is adjacent to a source). Undefined when no base link exists yet
+// (still under construction) — the caller falls back to containers/storage.
+function getBaseLink(room) {
+  const links = room.find(FIND_MY_STRUCTURES, { filter: s => s.structureType === STRUCTURE_LINK });
+  const sources = room.find(FIND_SOURCES);
+  return links.find(l => !sources.some(s => s.pos.getRangeTo(l) <= 1));
+}
+
 module.exports = function (creep) {
   const used = creep.store.getUsedCapacity(RESOURCE_ENERGY);
   const isSmall = creep.body.length < 6;
@@ -77,6 +102,16 @@ module.exports = function (creep) {
 
   // Large hauler: pull from the fullest container. Once a target is chosen,
   // stick with it until it can no longer fill the hauler's free capacity.
+
+  // HIGH PRIORITY: drain the base link so the source -> base link pipeline
+  // never stalls at the base link's 800 cap. The source link (within range 1
+  // of a source) is never touched — that's the harvester's side. If no base
+  // link exists yet, fall through to containers/storage unchanged.
+  const baseLink = getBaseLink(creep.room);
+  if (baseLink && baseLink.energy >= LINK_WITHDRAW_MIN) {
+    if (creep.withdraw(baseLink, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(baseLink, { reusePath: 5 });
+    return;
+  }
 
   // Check current target — only abandon if it can't fill us completely.
   if (creep.memory.targetId) {
