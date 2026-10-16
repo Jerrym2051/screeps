@@ -407,7 +407,7 @@ function _computeTargets(room) {
       .reduce((n, cr) => n + (cr.memory.role === 'harvester' ? cr.body.filter(p => p.type === WORK).length : 0), 0)
       + Object.values(Game.creeps).filter(c => c.memory.role === 'remoteharvester')
         .reduce((n, c) => n + c.body.filter(p => p.type === WORK).length, 0);
-    targets.hauler = filled > 0 ? Math.min(8, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
+    targets.hauler = filled > 0 ? Math.min(4, Math.max(2, Math.ceil(harvesterWork * 2 / 5))) : 0;
     // Expansion: the home room's primary outpost is the NORTHERN neighbor (was east).
     // The expansion TARGET is set whenever the home is RCL>=4. Pointing an already-spawned
     // idle claimer at the room is cheap and must happen REGARDLESS of the bank — otherwise
