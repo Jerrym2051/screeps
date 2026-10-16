@@ -48,9 +48,19 @@ module.exports = function (creep) {
         creep.move(dir);
       } else {
         // moveTo is safe: target is in the current visible room (only cross-room moveTo is broken on this server).
-        const tx = dir === LEFT ? 0 : dir === RIGHT ? 49 : creep.pos.x;
-        const ty = dir === TOP ? 0 : dir === BOTTOM ? 49 : creep.pos.y;
-        creep.moveTo(new RoomPosition(tx, ty, creep.pos.roomName));
+        // Target the NEAREST REAL exit tile (FIND_EXIT_* returns only walkable border tiles), not the raw
+        // border point (x,0)/(0,y) which may be a wall — see (20,0) stuck bug in W9S58.
+        const exitType = dir === TOP ? FIND_EXIT_TOP : dir === BOTTOM ? FIND_EXIT_BOTTOM : dir === LEFT ? FIND_EXIT_LEFT : FIND_EXIT_RIGHT;
+        const exits = creep.room.find(exitType);
+        const exit = exits.length ? (creep.pos.findClosestByPath(exits) || creep.pos.findClosestByRange(exits)) : null;
+        if (exit) {
+          creep.moveTo(exit);
+        } else {
+          // Fallback (should not happen): keep old border-point behavior so the creep never stands still.
+          const tx = dir === LEFT ? 0 : dir === RIGHT ? 49 : creep.pos.x;
+          const ty = dir === TOP ? 0 : dir === BOTTOM ? 49 : creep.pos.y;
+          creep.moveTo(new RoomPosition(tx, ty, creep.pos.roomName));
+        }
       }
       return;
     }
@@ -78,9 +88,19 @@ module.exports = function (creep) {
       }
 
       // moveTo is safe: target is in the current visible room (only cross-room moveTo is broken on this server).
-      const tx = dir === LEFT ? 0 : dir === RIGHT ? 49 : creep.pos.x;
-      const ty = dir === TOP ? 0 : dir === BOTTOM ? 49 : creep.pos.y;
-      creep.moveTo(new RoomPosition(tx, ty, creep.pos.roomName));
+      // Target the NEAREST REAL exit tile (FIND_EXIT_* returns only walkable border tiles), not the raw
+      // border point (x,0)/(0,y) which may be a wall — see (20,0) stuck bug in W9S58.
+      const exitType = dir === TOP ? FIND_EXIT_TOP : dir === BOTTOM ? FIND_EXIT_BOTTOM : dir === LEFT ? FIND_EXIT_LEFT : FIND_EXIT_RIGHT;
+      const exits = creep.room.find(exitType);
+      const exit = exits.length ? (creep.pos.findClosestByPath(exits) || creep.pos.findClosestByRange(exits)) : null;
+      if (exit) {
+        creep.moveTo(exit);
+      } else {
+        // Fallback (should not happen): keep old border-point behavior so the creep never stands still.
+        const tx = dir === LEFT ? 0 : dir === RIGHT ? 49 : creep.pos.x;
+        const ty = dir === TOP ? 0 : dir === BOTTOM ? 49 : creep.pos.y;
+        creep.moveTo(new RoomPosition(tx, ty, creep.pos.roomName));
+      }
       if (Game.time % 25 === 0) console.log('[CLM2] travel ' + creep.pos + ' dir=' + dir + ' ttl=' + creep.ticksToLive);
       return;
     }
