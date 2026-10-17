@@ -1,8 +1,9 @@
 // role.remotehauler.js - collect energy in memory.targetRoom (the north outpost) —
 // dropped by the remote harvester, or sitting in an on-site container — and carry it
-// back to memory.homeRoom's storage/spawn. Cross-room: both rooms are visible once the
-// outpost is claimed, so moveTo across the border succeeds (unlike the claimer's blind
-// entry into an unseen room).
+// back to memory.homeRoom's storage/spawn. Transfer works at range 1, so the delivery
+// moveTo uses range: 1 (never path onto the storage tile itself, which is impassable).
+// Cross-room: both rooms are visible once the outpost is claimed, so moveTo across the
+// border succeeds (unlike the claimer's blind entry into an unseen room).
 module.exports = function (creep) {
   const targetRoom = creep.memory.targetRoom;
   const homeRoom = creep.memory.homeRoom;
@@ -15,7 +16,7 @@ module.exports = function (creep) {
   // CARRYING -> deliver to home.
   if (used > 0) {
     if (homeDest) {
-      if (creep.transfer(homeDest, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(homeDest, { reusePath: 10 });
+      if (creep.transfer(homeDest, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) creep.moveTo(homeDest, { reusePath: 10, range: 1 });
     } else {
       creep.moveTo(new RoomPosition(25, 25, homeRoom), { reusePath: 10 });
     }

@@ -480,7 +480,7 @@ function _computeTargets(room) {
         if (nSources > 0) {
           targets.remoteTarget = northRoom;
           targets.remoteharvester = nSources;   // one harvester per north source
-          targets.remotehauler = 1;             // carries north output back home
+          targets.remotehauler = 2;             // carries north output back home (2 sources -> 2 haulers)
           targets.remotebuilder = 1;            // builds roads / a source container
         }
       }
