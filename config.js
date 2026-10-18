@@ -242,9 +242,13 @@ function buildBody(role, budget) {
      if (budget < 350) return [];
      b.push(WORK, WORK, CARRY, MOVE, MOVE); return b;
    }
-   // remotehauler = 2C: carry 100 home per trip. 2 MOVE keeps speed 1 when loaded.
+   // remotehauler: carry buffer for the long W9S57->W9S58 round trip with 2 sources.
+   // budget>=400: 4C4M — carry 200 home per trip, full speed (2 MOVE per CARRY, speed 2 loaded).
+   // budget>=200: 2C2M — carry 100, full speed. Fallback when the bank is low.
+   // budget<200: [] — cannot afford.
    if (role === 'remotehauler') {
      if (budget < 200) return [];
+     if (budget >= 400) { b.push(CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE); return b; }
      b.push(CARRY, CARRY, MOVE, MOVE); return b;
    }
    // remotebuilder = 1W1C: builds north roads/source container, refilling from home.
