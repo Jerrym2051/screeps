@@ -224,7 +224,10 @@ function buildBody(role, budget) {
     // A 2nd carry is cheap insurance before the link exists; never exceed 2 total.
     if (budget >= 50 && b.filter(p => p === CARRY).length < 2) { b.push(CARRY); budget -= 50; }
     // Scale WORK and MOVE together: harvest power plus enough move to reach position.
-    while (budget >= 150 && b.length + 2 <= MAX_BODY_PARTS) { b.push(WORK, MOVE); budget -= 150; }
+    // Cap WORK at 5 per body: 5 WORK x 2 energy/tick = 10/tick, saturating one source
+    // (main room W9S58 sources produce 3000 energy / 300 ticks = 10/tick). More than 5
+    // WORK just finishes the harvest faster and then idles — wasted parts.
+    while (budget >= 150 && b.length + 2 <= MAX_BODY_PARTS && b.filter(p => p === WORK).length < 5) { b.push(WORK, MOVE); budget -= 150; }
     return b;
   }
   // Haulers are pure logistics (carry+move, no WORK) — using the generic isWork path
