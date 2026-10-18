@@ -174,9 +174,10 @@ function buildBody(role, budget) {
   }
   if (role === 'defender') {
     if (budget < 200) return [];
-    if (budget >= 250) { b.push(TOUGH, MOVE, RANGED_ATTACK, HEAL); budget -= 250; }
-    else if (budget >= 200) { b.push(TOUGH, MOVE, ATTACK); budget -= 200; }
-    while (budget >= 50 && b.length + 1 <= MAX_BODY_PARTS) { b.push(MOVE); budget -= 50; }
+    if (budget >= 460) { b.push(TOUGH, MOVE, RANGED_ATTACK, HEAL); budget -= 460; }
+    else { b.push(TOUGH, MOVE, ATTACK); budget -= 140; }
+    while (budget >= 200 && b.length + 2 <= MAX_BODY_PARTS) { b.push(RANGED_ATTACK, MOVE); budget -= 200; }
+    while (budget >= 10 && b.length + 1 <= MAX_BODY_PARTS) { b.push(TOUGH); budget -= 10; }
     return b;
   }
   if (role === 'repairer') {
